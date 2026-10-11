@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "id": "05b0d63f-34b3-44ce-aa6b-275a30a8b0b2",
+  "name": "Phone-scene regression",
+  "request": "",
+  "mode": "sliding",
+  "resolution": "832x480",
+  "seed": -1,
+  "maxSpan": 362,
+  "assets": [
+    {
+      "id": "niko-image",
+      "kind": "image",
+      "number": 1,
+      "name": "niko.jpg"
+    },
+    {
+      "id": "roman-image",
+      "kind": "image",
+      "number": 2,
+      "name": "roman.jpg"
+    },
+    {
+      "id": "roman-voice",
+      "kind": "audio",
+      "number": 1,
+      "name": "Roman.wav",
+      "duration": 7
+    },
+    {
+      "id": "niko-voice",
+      "kind": "audio",
+      "number": 2,
+      "name": "Niko.wav",
+      "duration": 6
+    }
+  ],
+  "subjects": [
+    {
+      "id": "niko",
+      "number": 1,
+      "name": "Niko",
+      "description": "Niko in <Picture 1> wears a leather jacket. In the finale his jacket is open.",
+      "assetIds": [
+        "niko-image"
+      ],
+      "speakerId": "S2",
+      "voiceAssetId": "niko-voice",
+      "retention": "fully_preserved"
+    },
+    {
+      "id": "roman",
+      "number": 2,
+      "name": "Roman",
+      "description": "Roman from <Picture 2> wears several different costumes across the references.",
+      "assetIds": [
+        "roman-image"
+      ],
+      "speakerId": "S1",
+      "voiceAssetId": "roman-voice",
+      "retention": "partially_preserved"
+    }
+  ],
+  "windows": [
+    {
+      "id": "0a9cad53-96e1-40d9-bd11-13b9ef4e4e91",
+      "title": "Phone opening",
+      "frames": 243,
+      "overlap": 0,
+      "subjectIds": [
+        "niko",
+        "roman"
+      ],
+      "assetIds": [],
+      "casting": {},
+      "definitions": "",
+      "summary": "[reference generation] Describe the visible goal of this window.",
+      "retention": "",
+      "detail": "[Shot 1] <Subject 1> walks through rain. [Shot 2] At 00:04.200. He listens, and behind the phone <Subject 2> (Roman) (S1) comes through with a bright chirp: <d>[English] Niko! My cousin! Let's go bowling.</d> Niko scowls.",
+      "soundscape": "Describe ambience and sounds caused by visible actions.",
+      "music": "N/A",
+      "entry": "",
+      "exit": "",
+      "notes": ""
+    },
+    {
+      "id": "a49ca01e-5f2e-4f54-9478-c448b80975b7",
+      "title": "Niko replies",
+      "frames": 209,
+      "overlap": 18,
+      "subjectIds": [
+        "niko",
+        "roman"
+      ],
+      "assetIds": [],
+      "casting": {},
+      "definitions": "",
+      "summary": "[reference generation] Describe the visible goal of this window.",
+      "retention": "",
+      "detail": "[Shot 1] <Subject 1> (S2) says, <d>[English] Not now, Roman.</d>",
+      "soundscape": "Describe ambience and sounds caused by visible actions.",
+      "music": "N/A",
+      "entry": "",
+      "exit": "",
+      "notes": ""
+    }
+  ],
+  "settings": {},
+  "counters": {
+    "image": 0,
+    "video": 0,
+    "audio": 0,
+    "subject": 0
+  },
+  "modelType": "fixture_ref2va_pruned_pdd8",
+  "modelLabel": "",
+  "presetConfirmed": true,
+  "variants": [],
+  "jobs": [],
+  "revision": 0,
+  "updatedAt": "2026-09-12T03:59:22.126Z"
+}

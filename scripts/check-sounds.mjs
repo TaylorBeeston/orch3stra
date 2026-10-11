@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,readFile,writeFile,stat} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {Readable} from 'node:stream';
+import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
+import {StudioStore} from '../studio-server.mjs';
+import {SoundLibrary} from '../sound-server.mjs';
+import {createServer} from '../bridge.mjs';
+const require=createRequire(import.meta.url),S=require('../sound-core.js'),H=require('../core.js'),SC=require('../studio-core.js');
+const root=await mkdtemp(join(tmpdir(),'h3-sounds-test-'));let n=0;
+const pass=s=>{n++;console.log('PASS '+s);};
+const wait=async(lib,id)=>{for(let i=0;i<1000;i++){const j=lib.get(id);if(!['queued','running','cancelling'].includes(j.status))return j;await new Promise(r=>setTimeout(r,30));}throw Error('Timed out');};
+let lib,server;
+try{
+ assert.equal(S.youtube('https://youtu.be/NirnxVtIcRc?t=1'),'https://www.youtube.com/watch?v=NirnxVtIcRc');
+ for(const url of ['file:///etc/passwd','https://127.0.0.1/watch?v=NirnxVtIcRc','https://youtube.com.evil.test/watch?v=NirnxVtIcRc','https://youtube.com:8080/watch?v=NirnxVtIcRc','https://youtube.com/playlist?list=xxx'])assert.throws(()=>S.youtube(url));pass('YouTube canonicalization rejects private/arbitrary destinations and playlists');
+ const src=join(root,'tones.wav');execFileSync('python3',['-c',`import wave,math,struct\nf=wave.open(${JSON.stringify(src)},'wb');f.setparams((2,2,48000,0,'NONE','not compressed'))\nfor k in range(48000*6):\n t=k/48000;v=int(15000*math.sin(2*math.pi*(440 if t<3 else 660)*t)) if 1<=t<2 or 3<=t<5 else 0\n f.writeframesraw(struct.pack('<hh',v,-v))\nf.close()`]);
+ const store=new StudioStore(join(root,'data'));await store.ready;const bytes=await readFile(src);await store.putBlob('test-input',Readable.from(bytes),bytes.length,'audio/wav');
+ lib=new SoundLibrary(store,{python:'python3'});await lib.ready;
+ const start={action:'start',id:'sound-test',projectId:'test-project',uploadKey:'test-input',name:'Transitions.wav',consent:true,options:{method:'silence',thresholdDb:-40,minGap:.4,minLength:.2,padding:.12}};
+ await lib.handle(start);let j=await wait(lib,start.id);assert.equal(j.status,'ready',j.error);assert.equal(j.samples.length,2);assert(Math.abs(j.samples[0].start-.88)<.03);assert(Math.abs(j.samples[0].end-2.12)<.03);assert(j.peaks.some(x=>x>.3));pass('Actual stereo anti-phase audio produces two padded sample regions, not false silence');
+ assert.deepEqual((await lib.handle(start)).id,j.id);await assert.rejects(()=>lib.handle({...start,name:'Different.wav'}));pass('Repeated start IDs are idempotent; changed requests refuse reuse');
+ const sourceBytes=await readFile(store.blobPath(j.source.id));
+ let rows=structuredClone(j.samples);rows[0].name='Short sting';rows[0].category='sting';rows[1].category='transition';
+ await assert.rejects(()=>lib.handle({action:'save-samples',id:j.id,revision:-1,samples:rows,confirm:true}));
+ await lib.handle({action:'save-samples',id:j.id,revision:j.revision,samples:rows,confirm:true});j=await wait(lib,j.id);assert.equal(j.status,'ready',j.error);assert.equal(j.media.length,2);assert.deepEqual(sourceBytes,await readFile(store.blobPath(j.source.id)));pass('Save creates separate stereo WAVs; original editing source remains byte-identical');
+ const sample=j.media[0],out=JSON.parse(execFileSync('ffprobe',['-v','error','-show_streams','-show_format','-of','json',store.blobPath(sample.id)],{encoding:'utf8'}));assert.equal(out.streams[0].channels,2);assert.equal(out.streams[0].sample_rate,'48000');assert(Math.abs(Number(out.format.duration)-(rows[0].end-rows[0].start))<.002);pass('Exported sample has exact selected duration, two channels and 48 kHz audio');
+ const count=j.media.length;await lib.handle({action:'save-samples',id:j.id,revision:j.revision,samples:rows,confirm:true});j=await wait(lib,j.id);assert.equal(j.media.length,count);pass('Repeated saving of unchanged ranges does not create duplicate sample media');
+ const p=H.newProject();p.id='test-project';const original=JSON.stringify({windows:p.windows,assets:p.assets});S.attach(p,lib.view(j));assert.equal(p.postMedia.length,2);assert(SC.mediaKeys(p).includes(j.source.id));assert.equal(original,JSON.stringify({windows:p.windows,assets:p.assets}));pass('Sound samples and source backup keys stay separate from H3 reference assets and windows');
+ const split=S.split(rows,rows[0].id,1.4,'new-split');assert.equal(split.length,3);assert.equal(S.merge(split,split[0].id).length,2);assert.throws(()=>S.samples([{...rows[0],end:999}],j.duration));pass('Manual split/merge and invalid-range checks preserve explicit source coordinates');
+ await lib.handle({action:'scan',id:j.id,revision:j.revision,options:{method:'chapters'},confirm:true});j=await wait(lib,j.id);assert.equal(j.media.length,2);assert(j.warnings.some(x=>x.includes('no usable chapter')));pass('Rescanning preserves previously saved/used samples and explains missing chapters');
+ lib.close();lib=new SoundLibrary(store,{python:'python3'});await lib.ready;assert.equal(lib.get(j.id).media.length,2);pass('Saved source, candidates and samples survive server component restart');
+ const bad=Buffer.from('#EXTM3U\nhttp://127.0.0.1/private');await store.putBlob('playlist',Readable.from(bad),bad.length,'audio/wav');await lib.handle({...start,id:'bad-source',uploadKey:'playlist'});const jb=await wait(lib,'bad-source');assert.equal(jb.status,'failed');assert(jb.error.includes('Playlists'));pass('Disguised network playlists are refused before FFmpeg decoding');
+ // Exercise cancellation with a real owned helper process, without a downloader/GPU.
+ const slow=join(root,'slow.py');await writeFile(slow,"import json,time\njson.load(__import__('sys').stdin)\nprint(json.dumps({'phase':'analyzing','message':'Slow test'}),flush=True)\ntime.sleep(30)\n");
+ const cancelLib=new SoundLibrary(store,{python:'python3',worker:slow});await cancelLib.ready;
+ await cancelLib.handle({...start,id:'cancel-sound'});for(let i=0;i<100&&!cancelLib.child?.pid;i++)await new Promise(r=>setTimeout(r,10));assert(cancelLib.child?.pid);
+ await cancelLib.handle({action:'cancel',id:'cancel-sound'});const cancelled=await wait(cancelLib,'cancel-sound');assert.equal(cancelled.status,'cancelled');assert.equal(cancelled.media.length,0);pass('Cancellation stops a real sound-helper process and does not discard other saved samples');
+ await cancelLib.handle({action:'resume',id:'cancel-sound',confirm:true});for(let i=0;i<100&&!cancelLib.child?.pid;i++)await new Promise(r=>setTimeout(r,10));cancelLib.close();await wait(cancelLib,'cancel-sound');
+ const reopened=new SoundLibrary(store,{python:'python3'});await reopened.ready;assert.equal(reopened.get('cancel-sound').status,'paused');assert.equal(reopened.queue.length,0);reopened.close();pass('Interrupted sound work parks durably for explicit resume, without automatic retry');
+ // Actual HTTP uses normal pairing/origin/CSRF, not a separate unauthenticated service.
+ server=createServer({host:'0.0.0.0',port:0,dataDir:join(root,'http'),studioPassword:'sounds-test-secret',soundOptions:{python:'python3'},backendOptions:{mode:'legacy'}});await server.ready;await new Promise(r=>server.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+server.address().port;
+ assert.equal((await fetch(base+'/api/sounds',{method:'POST',body:'{}'})).status,401);
+ const paired=await fetch(base+'/pair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:'sounds-test-secret'})});const cookie=paired.headers.get('set-cookie').split(';')[0],health=await(await fetch(base+'/api/health',{headers:{cookie}})).json();const headers={cookie,'content-type':'application/json','x-h3-token':health.token};
+ assert.equal((await fetch(base+'/sound-ui.js',{headers:{cookie}})).status,200);
+ assert.equal((await fetch(base+'/api/sounds',{method:'POST',headers:{cookie,'content-type':'application/json'},body:'{}'})).status,403);
+ const resp=await fetch(base+'/api/sounds',{method:'POST',headers,body:JSON.stringify({action:'list',projectId:'test-project'})});assert.equal(resp.status,200);assert.deepEqual((await resp.json()).jobs,[]);pass('Actual sound HTTP and JS routes require pairing; mutations require bridge CSRF token');
+ server.sounds.jobs.set(j.id,structuredClone(j));const cutBytes=await readFile(store.blobPath(sample.id));await server.studio.putBlob(sample.id,Readable.from(cutBytes),cutBytes.length,'audio/wav');
+ const rangeURL=base+'/api/sounds-media/'+j.id+'/'+sample.id;
+ assert.equal((await fetch(rangeURL)).status,401);const range=await fetch(rangeURL,{headers:{cookie,Range:'bytes=0-43'}});assert.equal(range.status,206);assert.equal((await range.arrayBuffer()).byteLength,44);assert.match(range.headers.get('content-disposition'),/Short%20sting/);assert.notEqual((await fetch(base+'/api/sounds-media/'+j.id+'/unowned',{headers:{cookie}})).status,200);pass('Private sample downloads enforce ownership and support real byte-range audio responses');
+ console.log(`\n${n} sound-library checks passed. Real FFmpeg/Python/audio/files/HTTP; no YouTube download or model call.`);
+}finally{lib?.close();if(server){server.sounds.close();server.closeAllConnections();await new Promise(r=>server.close(r));}await rm(root,{recursive:true,force:true});}

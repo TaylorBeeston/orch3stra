@@ -1,0 +1,50 @@
+"""Synthetic-only Chromium crop QA: no local-file upload or model/provider calls."""
+import base64,io,json,os
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+ROOT=Path(__file__).resolve().parents[1]
+FIXTURE=json.loads((ROOT/'tests/fixtures/crop-images.json').read_text())
+normal,rotated=FIXTURE['normal'],FIXTURE['rotated']
+with sync_playwright() as pw:
+ browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_BIN','/usr/bin/chromium'),headless=True,args=['--no-sandbox'])
+ page=browser.new_page();page.route('https://crop.fixture/**',lambda route:route.fulfill(content_type='text/html',body='<dialog id="dialog"><h2 id="title"></h2><div id="body"></div></dialog>'));page.goto('https://crop.fixture/')
+ for f in ['core.js','clinic-core.js','image-crop-ui.js']:page.add_script_tag(content=(ROOT/f).read_text())
+ page.evaluate('''async urls=>{window.fx={blobs:new Map(),errors:[],writes:0,delay:null};for(const [id,url] of Object.entries(urls))fx.blobs.set(id,await(await fetch(url)).blob());
+ const Store={getBlob:async id=>fx.blobs.get(id),putBlob:async(id,b)=>{if(fx.delay)await fx.delay;fx.blobs.set(id,b);fx.writes++;},thumbnail:async b=>{const im=await createImageBitmap(b);const out={width:im.width,height:im.height,url:await new Promise(resolve=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.readAsDataURL(b);})};im.close();return out;}};
+ fx.reset=()=>{fx.p=H3.newProject();fx.p.assets=[{id:'source',number:1,kind:'image',name:'Synthetic.png',type:'image/png',size:fx.blobs.get('source').size}];fx.p.subjects=[{id:'person',number:1,name:'Synthetic',description:'Uses <Picture 1>',assetIds:['source'],referenceVariants:[{assetId:'source'}]}];fx.p.windows=[{...H3.newWindow('Fixture',107,0),assetIds:['source'],subjectIds:['person'],detail:'Use <Picture 1>',casting:{person:{sourceAssetIds:['source']}},excludedAssetIds:['source'],referencePolicy:{pins:['source'],excluded:['source'],manualSubjectSources:{person:['source']},requirements:[{assetIds:['source']}]}}];fx.p.referenceBoard={scenes:[{id:'scene',windowIds:fx.p.windows.map(w=>w.id),bankIds:['source'],pins:['source'],excluded:['source']}]};fx.p.jobs=[{projectSnapshot:{assetIds:['source'],detail:'<Picture 1>'}}];fx.p.variants=[{preparedProject:{assetIds:['source']}}];fx.before=H3.clone(fx.p);};fx.reset();
+ fx.crop=H3ImageCropUI.create({$:s=>document.querySelector(s),esc:s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;'),Store,project:()=>fx.p,openDialog:(t,html)=>{document.querySelector('#title').textContent=t;document.querySelector('#body').innerHTML=html;document.querySelector('#dialog').showModal();},toast:t=>fx.errors.push(t),mutate:f=>f(),hydrate:async()=>{},close:()=>document.querySelector('#dialog').close()});
+ }''',{'source':normal,'oriented':rotated})
+ def open_crop():page.evaluate("fx.crop.open('source')");page.wait_for_selector('#crop-save')
+ def crop(x=0,y=0,w=40,h=20):
+  for k,v in dict(x=x,y=y,w=w,h=h).items():page.locator('#crop-'+k).fill(str(v))
+ open_crop();crop();page.locator('#crop-cancel').click();assert page.evaluate('JSON.stringify(fx.p)===JSON.stringify(fx.before)');assert page.evaluate('fx.writes')==0
+ print('PASS cancel leaves original and all registrations untouched')
+ open_crop();crop(-1,0,40,20);assert page.locator('#crop-save').is_disabled();crop(0,0,81,20);assert page.locator('#crop-save').is_disabled();crop(0,0,40.5,20);assert page.locator('#crop-save').is_disabled();crop();assert page.evaluate('!document.querySelector("#crop-save").disabled')
+ page.locator('#crop-save').click();page.wait_for_function('fx.p.assets.length===2');page.wait_for_function('!document.querySelector("#dialog").open')
+ result=page.evaluate('''async()=>{const a=fx.p.assets[1],b=fx.blobs.get(a.id),im=await createImageBitmap(b),c=document.createElement('canvas');c.width=im.width;c.height=im.height;c.getContext('2d').drawImage(im,0,0);return{width:im.width,height:im.height,pixel:[...c.getContext('2d').getImageData(2,2,1,1).data],source:[...new Uint8Array(await fx.blobs.get('source').arrayBuffer())],crop:a};}''');assert (result['width'],result['height'])==(40,20);assert result['pixel']==[255,0,0,255];assert bytes(result['source'])==base64.b64decode(normal.split(',')[1])
+ assert page.evaluate('JSON.stringify(fx.p.assets[0])===JSON.stringify(fx.before.assets[0])');assert page.evaluate('JSON.stringify(fx.p.jobs)===JSON.stringify(fx.before.jobs)&&JSON.stringify(fx.p.variants)===JSON.stringify(fx.before.variants)')
+ assert page.evaluate('''()=>{const id=fx.p.assets[1].id,w=fx.p.windows[0],s=fx.p.subjects[0],scene=fx.p.referenceBoard.scenes[0];return s.assetIds[0]===id&&s.referenceVariants[0].assetId===id&&w.assetIds[0]===id&&w.casting.person.sourceAssetIds[0]===id&&w.detail.includes('<Picture 2>')&&w.referencePolicy.pins[0]===id&&w.referencePolicy.requirements[0].assetIds[0]===id&&w.excludedAssetIds.includes(id)&&w.excludedAssetIds.includes('source')&&w.referencePolicy.excluded.includes(id)&&scene.pins[0]===id&&scene.excluded.includes(id);}''')
+ print('PASS pixel-exact crop and dimensions, immutable original/history, live replacement, pins and explicit exclusions')
+ page.evaluate('fx.reset()');open_crop();crop();page.locator('#crop-replace').uncheck();page.locator('#crop-save').click();page.wait_for_function('fx.p.assets.length===2');page.wait_for_function('!document.querySelector("#dialog").open');assert page.evaluate('JSON.stringify(fx.p.windows)===JSON.stringify(fx.before.windows)&&JSON.stringify(fx.p.subjects)===JSON.stringify(fx.before.subjects)')
+ print('PASS optional copy without replacement preserves live references')
+ page.evaluate('fx.reset();fx.blobs.set("source",fx.blobs.get("oriented"))');open_crop();assert page.locator('#crop-w').input_value()=='40';assert page.locator('#crop-h').input_value()=='80';page.locator('#crop-save').click();page.wait_for_function('fx.p.assets.length===2');page.wait_for_function('!document.querySelector("#dialog").open');assert page.evaluate('fx.p.assets[1].width===40&&fx.p.assets[1].height===80')
+ print('PASS EXIF orientation is applied once and normalized in saved PNG')
+ page.evaluate('fx.reset()');open_crop();crop();page.evaluate('fx.blobs.set("source",new Blob(["changed"],{type:"image/png"}))');page.locator('#crop-save').click();page.wait_for_function('fx.errors.some(t=>t.includes("Crop was not attached"))');assert page.evaluate('fx.p.assets.length')==1
+ print('PASS reattached original during edit rejects stale crop')
+ page.locator('#crop-cancel').click();page.evaluate('''async url=>{fx.blobs.set('source',await(await fetch(url)).blob());fx.reset();fx.errors=[];}''',normal);open_crop();crop();page.evaluate('()=>{fx.delay=new Promise(resolve=>fx.release=resolve)}');page.locator('#crop-save').click();page.evaluate('fx.reset();fx.p.id="different-project";fx.release()');page.wait_for_function('fx.errors.some(t=>t.includes("Crop was not attached"))');assert page.evaluate('fx.p.assets.length')==1
+ print('PASS project-switch/save race never attaches to the new project')
+ page.locator('#crop-cancel').click();page.evaluate('fx.delay=null;fx.reset();fx.errors=[]');open_crop();crop();page.evaluate('()=>{fx.delay=new Promise(resolve=>fx.release=resolve)}');page.locator('#crop-save').click();page.evaluate('fx.p.windows[0].detail="New edit";fx.release()');page.wait_for_function('fx.errors.some(t=>t.includes("Crop was not attached"))');assert page.evaluate('fx.p.assets.length===1&&fx.p.windows[0].detail==="New edit"')
+ print('PASS live edits during save are not overwritten')
+ page.locator('#crop-cancel').click();page.evaluate('fx.delay=null;fx.reset();fx.errors=[]');open_crop();crop();page.evaluate('()=>{fx.delay=new Promise(resolve=>fx.release=resolve)}');page.locator('#crop-save').click();page.locator('#crop-cancel').click();page.evaluate('fx.release()');page.wait_for_function('fx.errors.some(t=>t.includes("Crop was not attached"))');assert page.evaluate('fx.p.assets.length')==1
+ print('PASS closing during save cancels attachment')
+ page.evaluate('()=>{fx.delay=null;fx.reset();fx.errors=[];fx.nativeBitmap=createImageBitmap.bind(window);window.createImageBitmap=async blob=>{if(fx.decodeDelay)await fx.decodeDelay;return fx.nativeBitmap(blob);};fx.decodeDelay=new Promise(resolve=>fx.decodeRelease=resolve);fx.crop.open("source").catch(e=>fx.errors.push(e.message));}');page.evaluate('fx.p=H3.newProject();fx.decodeRelease()');page.wait_for_function('fx.errors.length>0');assert page.evaluate('fx.errors.some(t=>t.includes("Project changed"))'),page.evaluate('fx.errors');assert not page.locator('#dialog').is_visible()
+ print('PASS project switch during image decode cannot open stale editor')
+ page.evaluate('()=>{fx.decodeDelay=null;fx.reset();fx.errors=[];fx.decodeDelay=new Promise(resolve=>fx.decodeRelease=resolve);fx.crop.open("source").catch(e=>fx.errors.push(e.message));}');page.evaluate('fx.blobs.set("source",fx.blobs.get("oriented"));fx.decodeRelease()');page.wait_for_function('fx.errors.some(t=>t.includes("changed while loading"))');assert not page.locator('#dialog').is_visible()
+ print('PASS source replacement during image decode cannot open stale editor')
+ page.evaluate('()=>{fx.decodeDelay=null;fx.reset();fx.p.assets[0].generationExcluded=true;fx.before=H3.clone(fx.p);}')
+ open_crop();crop();assert page.locator('#crop-replace').is_disabled();assert not page.locator('#crop-replace').is_checked()
+ page.locator('#crop-save').click();page.wait_for_function('fx.p.assets.length===2');page.wait_for_function('!document.querySelector("#dialog").open')
+ assert page.evaluate('fx.p.assets[1].generationExcluded===true&&fx.p.assets[1].provenance.sourceAssetId==="source"')
+ assert page.evaluate('JSON.stringify(fx.p.subjects)===JSON.stringify(fx.before.subjects)&&JSON.stringify(fx.p.windows)===JSON.stringify(fx.before.windows)&&JSON.stringify(fx.p.jobs)===JSON.stringify(fx.before.jobs)')
+ print('PASS excluded original produces excluded crop with provenance and no implicit replacement')
+ browser.close()

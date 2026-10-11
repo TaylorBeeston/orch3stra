@@ -1,0 +1,75 @@
+/** Existing-media edits use actual FFmpeg/FFprobe and real HTTP. WanGP inference is a fixture. */
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,readFile,writeFile,rm,copyFile,stat} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createRequire} from 'node:module';
+import {createHash} from 'node:crypto';
+import {once} from 'node:events';
+import {StudioStore} from '../studio-server.mjs';
+import {Finishing,chunkPlan,checkEdit,command,probe} from '../finish-server.mjs';
+import {createServer} from '../bridge.mjs';
+const require=createRequire(import.meta.url),H=require('../core.js'),E=require('../edit-core.js');let checks=0;
+async function check(n,fn){await fn();checks++;console.log('PASS '+n);}
+const root=await mkdtemp(join(tmpdir(),'h3-finish-')),store=new StudioStore(root,{network:false});await store.ready;await mkdir(join(root,'renders'),{recursive:true});
+const red='a'.repeat(32),blue='b'.repeat(32),redFile=join(root,'renders',red+'.mp4'),blueFile=join(root,'renders',blue+'.mp4');
+async function make(path,color,frames=288,audio=true){await command('ffmpeg',['-v','error','-y','-f','lavfi','-i',`color=c=${color}:s=160x96:r=24:d=${frames/24}`,...(audio?['-f','lavfi','-i',`sine=frequency=${color==='red'?440:880}:sample_rate=48000:duration=${frames/24}`]:[]),'-c:v','libx264','-threads','1','-pix_fmt','yuv420p',...(audio?['-c:a','aac']:[]),path]);}
+await make(redFile,'red');await make(blueFile,'blue',288,false);
+const output=new Map([[red,redFile],[blue,blueFile]]),uploads=new Map(),native=new Map(),requests=[],results=new Map();let sequenceBusy=false,late=true,nativeCount=0;
+const seq={backendMode:'headless',runs:new Map([['seq_source',{outputs:[{id:red},{id:blue}]}]]),assertAvailable:async()=>{if(sequenceBusy)throw Error('busy managed sequence');},workerQueue:async()=>({reachable:true,paused:false,jobs:[],idle:true}),manager:async()=>({runs:sequenceBusy?[{blocking:true}]:[]}),upload:async(r,path)=>{const id='media_'+uploads.size;uploads.set(id,path);return id;},credentials:async()=>({base:'http://fixture',token:'never-print-this'}),api:async(r,path,body)=>{
+ if(path==='/health')return{capabilities:{late_postprocess:late}};
+ if(path==='/generate'){requests.push(body);const id='c'.repeat(30)+(nativeCount++).toString().padStart(2,'0'),j={job_id:id,status:'running',progress:10,outputs:[],message:'fixture scaling'};native.set(id,j);results.set(body.request_id,id);const t=body.tasks[0];assert.equal(t.mode,'edit_postprocessing');assert(!t.prompt&&!t.model_type);const source=uploads.get(t.video_source),dest=join(root,id+'.mp4');setTimeout(async()=>{try{await command('ffmpeg',['-v','error','-y','-i',source,'-vf',`trim=start_frame=${t.start_frame}:end_frame=${t.end_frame},setpts=PTS-STARTPTS,scale=320:192`,'-an','-r','24','-c:v','libx264','-threads','1',dest]);output.set(id,dest);j.status='completed';j.progress=100;j.outputs=[{id,available:true}];}catch(e){j.status='failed';j.errors=[e.message];}},10);return{job_id:id,status:j.status};}
+ if(path.startsWith('/requests/'))return{job_id:results.get(path.split('/').at(-1))||null};
+ if(path.endsWith('/cancel')){const id=path.split('/')[2];native.get(id).status='cancelled';return native.get(id);}
+ if(path.startsWith('/jobs/'))return native.get(path.split('/')[2]);
+ if(path==='/import-render')return{job_id:'imported-prefix',outputs:[{id:'e'.repeat(32),available:true}]};
+ throw Error('unexpected fixture request '+path);
+}};
+const fetchImpl=async url=>{const id=new URL(url).pathname.split('/').at(-1),p=output.get(id);return p?new Response(await readFile(p)):new Response('missing',{status:404});};
+let f=new Finishing(store,seq,{pollMs:10,fetchImpl});await f.ready;
+const source=id=>({kind:'managed',jobId:'seq_source',outputId:id}),edit={format:'h3-edit',fps:24,projectId:'project-test',name:'Chosen film',cuts:[{windowId:'blue',title:'Blue first',source:source(blue),inFrame:12,outFrame:60},{windowId:'red',title:'Red second',source:source(red),inFrame:24,outFrame:96}]};
+const until=async(fn)=>{for(let i=0;i<300;i++){if(await fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('Finishing test timed out');};
+async function finished(j){await f.work.get(j.id)?.promise;const result=await f.handle({action:'get',id:j.id});assert.equal(result.status,'completed',result.message);return result;}
+try{
+ await check('Finishing range validation rejects paths, traversal, duplicates and invalid cuts',()=>{assert.throws(()=>checkEdit({...edit,cuts:[{...edit.cuts[0],inFrame:-1}]}));assert.throws(()=>checkEdit({...edit,cuts:[edit.cuts[0],edit.cuts[0]]}));assert.throws(()=>checkEdit({...edit,cuts:[{...edit.cuts[0],source:{...source(blue),jobId:'../escape'}}]}));assert.throws(()=>checkEdit({...edit,fps:30}));assert.equal(checkEdit(edit).totalFrames,120);});
+ await check('Upscale chunk handles add context without duplicating output frames',()=>{const p=chunkPlan(610);assert.deepEqual(p.map(c=>[c.from,c.to,c.trimStart,c.frames]),[[0,252,0,240],[228,492,12,240],[468,610,12,130]]);assert.equal(p.reduce((n,c)=>n+c.frames,0),610);});
+
+ await check('Mixed legacy cumulative and bounded clips export only retained local frames',async()=>{
+  const bounded='f'.repeat(32),path=join(root,'renders',bounded+'.mp4');
+  await command('ffmpeg',['-v','error','-y','-f','lavfi','-i','color=c=red:s=160x96:r=24:d=0.75','-f','lavfi','-i','color=c=blue:s=160x96:r=24:d=3','-filter_complex','[0:v][1:v]concat=n=2:v=1:a=0[v]','-map','[v]','-c:v','libx264','-threads','1','-pix_fmt','yuv420p',path]);
+  seq.runs.set('seq_bounded',{outputs:[{id:bounded}]});
+  const p=H.newProject();p.windows=[{...H.newWindow('Old',48,0),id:'old'},{...H.newWindow('New',72,18),id:'new'}];
+  p.jobs=[{id:'seq_source',plan:[{id:'old',task_index:1,window_index:1,start_frame:0,end_frame:48,frames:48}],live:{outputs:[{id:red,available:true,cumulative:true,task_index:1,window_index:1}]}},{id:'seq_bounded',plan:[{id:'new',task_index:1,window_index:1,start_frame:48,end_frame:120,frames:72}],live:{outputs:[{id:bounded,available:true,cumulative:false,layout:'bounded-v1',source_start_frame:18,source_end_frame:90,probe:{frames:90},task_index:1,window_index:1}]}}];
+  const edl=E.selection(p);assert.deepEqual(edl.cuts.map(c=>[c.inFrame,c.outFrame]),[[0,48],[18,90]]);
+  const result=await finished(await f.start({edit:edl}));assert.equal(result.result.frames,120);assert.equal(requests.length,0);
+  const pixel=join(root,'bounded-pixel.bin');await command('ffmpeg',['-v','error','-y','-ss','2.1','-i',join(f.path(result.id),'film.mp4'),'-vf','scale=1:1','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24',pixel]);const b=await readFile(pixel);assert(b[2]>b[0]*2,'Red overlap must not be appended twice.');
+ });
+ let exported;
+ await check('Real frame-accurate MP4 assembly retains both silent and audible clips in requested order',async()=>{exported=await finished(await f.start({edit}));assert.equal(exported.result.frames,120);assert.equal(exported.result.width,160);assert(exported.result.audio);assert.equal(requests.length,0);assert.equal((await probe(redFile)).frames,288);});
+ await check('Actual output starts with blue, ends red and has 120 frames, not repeated prefixes',async()=>{const path=join(f.path(exported.id),'film.mp4');for(const [at,expected]of[[.25,'blue'],[3.5,'red']]){const file=join(root,'pixel.bin');await command('ffmpeg',['-v','error','-y','-ss',String(at),'-i',path,'-vf','scale=1:1','-frames:v','1','-f','rawvideo','-pix_fmt','rgb24',file]);const b=await readFile(file);assert(expected==='blue'?b[2]>b[0]*2:b[0]>b[2]*2);}});
+ await check('Silent first clip stays silent; second clip audio is present and synchronized',async()=>{const path=join(f.path(exported.id),'film.mp4'),pcm=join(root,'audio.pcm');await command('ffmpeg',['-v','error','-y','-i',path,'-vn','-ar','48000','-ac','1','-f','s16le',pcm]);const b=await readFile(pcm);function energy(a,z){let sum=0,n=0;for(let i=Math.floor(a*48000)*2;i<Math.min(b.length,z*48000*2);i+=2){sum+=Math.abs(b.readInt16LE(i));n++;}return sum/n;}assert(energy(.25,1)<3);assert(energy(2.5,3)>100);assert(Math.abs(b.length/2/48000-5)<.03);});
+ await check('Request ID idempotence returns original job and rejects a changed edit',async()=>{const again=await f.start({id:exported.id,edit});assert.equal(again.id,exported.id);await assert.rejects(()=>f.start({id:exported.id,edit:{...edit,name:'different'}}),/different edit/);});
+ await check('Export render records map new global edit ranges into one cumulative MP4',()=>{const j=exported.renderJob,s=H.renderSegment(j,'red');assert.equal(s.start,2);assert.equal(s.end,5);assert.equal(s.output.id,exported.outputId);});
+ await check('Continuation import is explicit, idempotent, and uses the edited frame count',async()=>{const c=await f.handle({action:'context',id:exported.id});assert.equal(c.keepFrames,120);const n=uploads.size;assert.deepEqual(await f.handle({action:'context',id:exported.id}),c);assert.equal(uploads.size,n);});
+ await check('Unknown or missing archive ownership fails without reading arbitrary files',async()=>{const bad=H.clone(edit);bad.cuts[0].source.jobId='seq_not_owned';const j=await f.start({edit:bad});await f.work.get(j.id)?.promise;assert.equal(f.public(f.jobs.get(j.id)).status,'failed');assert.equal(requests.length,0);});
+ await check('Old worker capability blocks upscaling but does not block ordinary export',async()=>{late=false;await assert.rejects(()=>f.start({edit,upscale:'flashvsr*2'}),/worker 1.3.0/);late=true;sequenceBusy=true;await assert.rejects(()=>f.start({edit,upscale:'flashvsr*2'}),/busy/);sequenceBusy=false;});
+ let scaled;
+ await check('Late upscale uses one postprocessing task per handled chunk, no H3 regeneration',async()=>{const long={...edit,cuts:[{windowId:'long',title:'Long',source:source(red),inFrame:0,outFrame:288}]};scaled=await finished(await f.start({edit:long,upscale:'flashvsr*2'}));assert.equal(requests.length,2);assert.deepEqual(requests.map(x=>[x.tasks[0].start_frame,x.tasks[0].end_frame]),[[0,252],[228,288]]);assert.equal(scaled.result.frames,288);assert.equal(scaled.result.width,320);assert.equal(scaled.result.height,192);assert(scaled.result.audio);});
+ await check('Upscale preserves the edited base audio packets rather than accepting generated chunk sound',async()=>{async function hashAudio(path){const out=join(root,'audio-'+Math.random()+'.m4a');await command('ffmpeg',['-v','error','-y','-i',path,'-vn','-c:a','copy','-f','adts',out]);return createHash('sha256').update(await readFile(out)).digest('hex');}assert.equal(await hashAudio(join(f.path(scaled.id),'base.mp4')),await hashAudio(join(f.path(scaled.id),'film.mp4')));});
+ await check('Completed output history and download IDs survive a Node-side manager restart',async()=>{await f.close();f=new Finishing(store,seq,{pollMs:10,fetchImpl});await f.ready;assert.equal((await f.handle({action:'get',id:exported.id})).status,'completed');assert.equal((await f.handle({action:'get',id:scaled.id})).outputId,scaled.outputId);});
+ await check('Lost upscale acceptance is reconciled by its request ID without another generation',async()=>{
+  const original=seq.api;let pending,attempts=0;
+  seq.api=async(r,path,body)=>{if(path==='/generate'){attempts++;pending={job_id:'d'.repeat(32),status:'running',progress:0,outputs:[],message:'pending fixture'};native.set(pending.job_id,pending);results.set(body.request_id,pending.job_id);throw Error('lost response after acceptance');}return original(r,path,body);};
+  const j=await f.start({edit,upscale:'flashvsr*2'});await until(()=>!f.work.has(j.id));assert.equal(f.jobs.get(j.id).status,'uncertain');assert(f.busyGPU());
+  await assert.rejects(()=>f.handle({action:'resume',id:j.id}),/Unknown submission/);await f.handle({action:'reconcile',id:j.id});assert.equal(f.jobs.get(j.id).status,'paused');assert.equal(f.jobs.get(j.id).nativeId,pending.job_id);assert.equal(attempts,1);
+  await f.handle({action:'cancel',id:j.id});await until(()=>f.jobs.get(j.id).status==='cancelled');assert.equal(attempts,1);assert.equal(pending.status,'cancelled');assert(!f.busyGPU());seq.api=original;
+ });
+ await check('Cancelled renderer observation survives a temporary transport failure and never dispatches a successor',async()=>{
+  const original=seq.api;let pending,attempts=0,failCancel=true;
+  seq.api=async(r,path,body)=>{if(path==='/generate'){attempts++;pending={job_id:'9'.repeat(32),status:'running',progress:1,outputs:[],message:'fixture work'};native.set(pending.job_id,pending);return pending;}if(path.endsWith('/cancel')&&failCancel)throw Error('temporary cancellation fault');return original(r,path,body);};
+  const j=await f.start({edit,upscale:'flashvsr*2'});await until(()=>!!f.jobs.get(j.id).nativeId);await f.handle({action:'cancel',id:j.id});await until(()=>!f.work.has(j.id));assert.equal(f.jobs.get(j.id).status,'cancelling');assert(f.busyGPU());
+  failCancel=false;f.launch(f.jobs.get(j.id));await until(()=>f.jobs.get(j.id).status==='cancelled');assert.equal(attempts,1);assert(!f.busyGPU());seq.api=original;
+ });
+ await check('Actual authenticated HTTP serves export with byte ranges and a download filename',async()=>{const server=createServer({port:0,host:'0.0.0.0',dataDir:root,studioPassword:'private-test-pairing'});await server.ready;server.listen(0,'127.0.0.1');await once(server,'listening');const base='http://127.0.0.1:'+server.address().port;try{assert.equal((await fetch(base+'/api/finish-media/'+exported.id)).status,401);const pair=await fetch(base+'/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'private-test-pairing'})}),cookie=pair.headers.get('set-cookie').split(';')[0],health=await(await fetch(base+'/api/health',{headers:{Cookie:cookie}})).json();assert.equal((await fetch(base+'/api/finish',{method:'POST',headers:{Cookie:cookie},body:'{}'})).status,403);const r=await fetch(base+'/api/finish-media/'+exported.id+'?download=1',{headers:{Cookie:cookie,Range:'bytes=0-99'}});assert.equal(r.status,206);assert.equal((await r.arrayBuffer()).byteLength,100);assert.match(r.headers.get('content-disposition'),/attachment/);assert.equal(r.headers.get('content-security-policy'),"default-src 'none'; media-src 'self'; script-src 'none'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");assert.equal(r.headers.get('x-content-type-options'),'nosniff');const list=await(await fetch(base+'/api/finish',{method:'POST',headers:{Cookie:cookie,'X-H3-Token':health.token},body:JSON.stringify({action:'list'})})).json();assert(list.jobs.some(j=>j.id===exported.id));assert(!JSON.stringify(list).includes('never-print-this'));for(const file of ['edit-core.js','editor-ui.js','editor.css'])assert.equal((await fetch(base+'/'+file,{headers:{Cookie:cookie}})).status,200);}finally{await new Promise(r=>server.close(r));}});
+ console.log(`\n${checks} finishing checks passed. Real FFmpeg, files and HTTP; synthetic WanGP upscale only.`);
+}finally{await f.close();if(process.env.KEEP_FINISH_TEST)console.log('DEBUG ROOT',root);else await rm(root,{recursive:true,force:true});}

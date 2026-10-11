@@ -1,0 +1,3 @@
+# Optional anonymous speaker grouping; accept the Community-1 model conditions.
+-r requirements-voice.txt
+pyannote.audio>=4,<5

@@ -1,0 +1,3 @@
+# Install into the SAME WanGP Python environment. No torch/transformers upgrades.
+yt-dlp[default]>=2025.11.12
+faster-whisper>=1.2,<2

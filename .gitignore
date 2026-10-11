@@ -1,0 +1,12 @@
+.voice-venv/
+__pycache__/
+*.pyc
+.env
+.h3-data/
+node_modules/
+*.log
+
+.diarization-venv/
+
+python-overlays/
+*.h3project

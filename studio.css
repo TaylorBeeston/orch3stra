@@ -1,0 +1,68 @@
+/* Studio additions: readable on desktop and narrow touch screens. */
+.program-panel{border:1px solid var(--border,#2c3538);border-radius:8px;background:#101517;margin:10px 18px 16px;overflow:hidden;min-width:0}.program-head,.program-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;font-size:11px}.program-head>b{letter-spacing:.11em;font-size:10px;color:#b9d7ca}.program-actions{display:flex;gap:5px;margin-left:auto;flex-wrap:wrap}.program-screen{background:#060809;display:grid;place-items:center;min-height:170px;height:clamp(170px,26vh,330px);position:relative}.program-screen video{width:100%;height:100%;max-height:330px;object-fit:contain}.program-screen video[hidden]{display:none}#program-empty{text-align:center;line-height:1.8;color:#9daeb0;padding:18px}#program-empty[hidden]{display:none}.program-foot>span{margin-right:auto;color:#93a3a6}#program-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}.render-clip.has-render-thumb{padding:0;overflow:hidden;background:#172326}.render-clip.has-render-thumb img{width:100%;height:100%;object-fit:cover;opacity:.72;position:absolute;inset:0;z-index:0}.render-clip.has-render-thumb{isolation:isolate;text-shadow:0 1px 3px #000}.render-clip.has-render-thumb img{z-index:-1}.render-track{min-height:64px}.render-track .render-clip{height:51px}#activity-stack{position:fixed;right:18px;bottom:35px;display:flex;flex-direction:column;gap:8px;max-width:min(420px,calc(100vw - 24px));max-height:50vh;overflow:auto;z-index:10001;pointer-events:none}.activity{display:flex;gap:10px;align-items:flex-start;background:#213138;border:1px solid #4c6570;box-shadow:0 5px 22px #0007;border-radius:8px;padding:12px;color:#eef5f3;font-size:12px;line-height:1.5;pointer-events:auto}.activity>span:nth-child(2){flex:1;overflow-wrap:anywhere}.activity button{border:0;padding:0 4px;background:transparent;color:inherit}.activity.error{background:#442e2b;border-color:#c68375}.activity.done{border-color:#668c7e}.activity-icon{font-weight:700;width:15px}.activity.running .activity-icon{animation:activity-spin 1.3s linear infinite}@keyframes activity-spin{to{transform:rotate(360deg)}}#toast{display:none}.variant-card p{max-height:7em;overflow:auto}.variant-card details p{max-height:none}.studio-batch{max-width:130px}.program-actions button,.program-foot button{min-height:29px}
+@media(max-width:900px){.header-actions{flex-wrap:wrap}.program-panel{margin:8px 10px}.program-screen{height:220px}.program-actions{margin-left:0}.program-head{gap:6px}#program-label{max-width:100%}.brief-controls{flex-wrap:wrap}.program-foot{font-size:10px}.program-foot button{min-height:36px}.main{min-width:0}}
+@media(max-width:600px){.topbar{height:auto;flex-wrap:wrap;padding:8px;gap:7px}.header-actions{width:100%;gap:5px;justify-content:flex-start}.header-actions button{font-size:11px;padding:7px}.project-head{flex:1}.program-panel{margin:6px}.program-screen{height:195px}.program-head>b{font-size:10px}.program-head{padding:8px}.program-actions{width:100%}.program-actions button{min-height:36px}.program-foot{gap:5px}.program-foot>span{flex-basis:100%}.timeline-toolbar{flex-wrap:wrap;height:auto}.toolbar-right{flex-wrap:wrap}.dialog-head h2{font-size:16px}#activity-stack{bottom:15px;right:10px;max-height:42vh}}
+@media(prefers-reduced-motion:reduce){.activity.running .activity-icon{animation:none}}
+
+/* A hidden left rail must not leave .main auto-placed in its zero-width grid track. */
+@media(max-width:760px){.workspace{display:block;height:auto;min-height:0;overflow:visible}.main{width:100%;overflow:visible}.project-head{display:flex!important;flex:1 1 190px;min-width:0}.project-head input{width:100%;min-width:0}.topbar{position:relative;flex-wrap:wrap;height:auto}.header-actions{flex-wrap:wrap}.program-panel{min-width:0}.program-screen{height:220px}.brief{min-width:0}.brief-controls{flex-wrap:wrap}.timeline-section{max-width:100vw}.editor{min-width:0}.compose-grid{grid-template-columns:1fr}.statusbar{position:relative;flex-wrap:wrap;height:auto;min-height:26px}body{height:auto;min-height:100vh;overflow:auto}}
+.program-panel{flex:0 0 auto}.program-screen{overflow:hidden}.program-screen video{position:absolute;inset:0;max-height:none;width:100%;height:100%}.program-foot{position:relative;background:#101517;z-index:1}
+/* Observable AI requests; the same panel works on desktop and a phone. */
+.ai-request-layout { display:grid; grid-template-columns:minmax(190px, .75fr) minmax(0, 1.7fr); gap:18px; margin-top:16px; }
+#ai-request-list { max-height:68vh; overflow:auto; }
+.ai-request-row button { display:block; text-align:left; width:100%; white-space:normal; padding:12px; margin-bottom:8px; }
+.ai-request-row small { display:block; margin-top:5px; opacity:.75; overflow-wrap:anywhere; }
+.ai-request-row.selected button { outline:1px solid var(--accent, #bdd8cd); }
+#ai-request-detail { min-width:0; }
+.ai-output { max-height:240px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; padding:12px; background:rgba(0,0,0,.2); border-radius:6px; font-size:12px; }
+#ai-current-status { white-space:pre-wrap; overflow-wrap:anywhere; }
+#ai-log-path { overflow-wrap:anywhere; }
+.activity { grid-template-columns:auto minmax(0,1fr); flex-wrap:wrap; }
+.activity > span:nth-child(2) { overflow-wrap:anywhere; min-width:0; }
+.activity button { flex:none; }
+@media(max-width:700px) { .ai-request-layout { grid-template-columns:1fr; } #ai-request-list { max-height:180px; } .ai-output { max-height:180px; } }
+/* Sequence manager: the renderer queue and Director lifecycle are different axes. */
+#sequence-manager,#sequence-detail,#seq-cleanup{min-width:0;overflow-wrap:anywhere}
+.seq-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:6px 0 18px}
+.seq-summary{background:#172024;border:1px solid #34464c;border-radius:9px;padding:16px;display:flex;flex-direction:column;gap:9px}
+.seq-summary small,.seq-facts small{font-size:10px;letter-spacing:.09em;color:#aac1c6}
+.seq-summary strong{font-size:17px;line-height:1.4}.seq-summary span{font-size:12px;line-height:1.6;color:#b8c9c9}
+.seq-summary.ready{border-color:#698f7c}.seq-summary.needs-review{border-color:#a18a62}
+.seq-toolbar,.seq-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.seq-toolbar{margin:10px 0}.seq-toolbar label{display:flex;gap:7px;align-items:center;margin-left:auto}.seq-actions button,.seq-toolbar button{min-height:40px}
+.seq-card{border:1px solid #344349;border-left:3px solid #718285;border-radius:8px;background:#13191b;margin:14px 0;padding:18px}.seq-card.attention{border-left-color:#d3ab76}.seq-card.parked{border-left-color:#779bab}.seq-card.finished{border-left-color:#82ac96}
+.seq-card-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.seq-card-head h3{margin:0 0 8px;font-size:16px}.seq-card-head code{font-size:11px;color:#99b0b6}.seq-badge{padding:5px 10px;border:1px solid #52656a;border-radius:15px;background:#253238;white-space:nowrap;font-size:12px;text-transform:capitalize}
+.seq-progress{display:flex;align-items:center;gap:12px;margin:15px 0;font-size:11px;color:#b8c8cb}.seq-progress progress{width:130px;max-width:40%;height:6px;accent-color:#91bbaa}
+.seq-facts{display:grid;grid-template-columns:1fr 1fr;gap:15px;background:#101517;padding:13px;border-radius:6px}.seq-facts>div{display:flex;flex-direction:column;gap:6px;min-width:0}.seq-facts b{font-size:13px}.seq-facts span{font-size:11px;color:#a5b7bc;overflow-wrap:anywhere}
+.seq-reason{font-size:13px;line-height:1.6;margin:14px 0}.seq-native{margin:14px 0}.seq-native p{font-size:11px}.seq-empty{padding:35px;text-align:center;color:#adc0c5}.seq-log{max-height:300px;overflow:auto;font-size:12px}.seq-log p{border-bottom:1px solid #2e3b40;padding:10px 0;line-height:1.6}.seq-log time{color:#8ca6ab}
+@media(max-width:650px){.seq-overview{grid-template-columns:1fr}.seq-summary{padding:12px;gap:5px}.seq-summary strong{font-size:16px}.seq-card{padding:12px}.seq-card-head{flex-wrap:wrap}.seq-facts{grid-template-columns:1fr;gap:13px}.seq-toolbar label{margin-left:0;width:100%}.seq-actions button,.seq-toolbar button{min-height:44px;white-space:normal;flex:1 1 135px}.seq-badge{font-size:12px}.seq-progress{gap:8px}.seq-card-head code{font-size:10px}}
+
+/* 1.2.3: explicit backend scope and accessible local-retirement confirmation. */
+.seq-backends {font-size: .86rem; overflow-wrap: anywhere; color: var(--muted, #aab4b5);}
+.seq-retire-consent {display: flex; align-items: flex-start; gap: .75rem; padding: 1rem; margin: 1rem 0; border: 1px solid var(--line, #435258); border-radius: 8px; line-height: 1.55;}
+.seq-retire-consent input {width: 20px; height: 20px; flex: 0 0 20px; margin-top: .2rem;}
+#seq-retirement code {overflow-wrap: anywhere;}
+
+/* 1.2.4 — one live studio-wide render surface, readable on a phone. */
+body.progress-enabled #render-live-bar{display:none!important}
+.render-overview{padding:16px 20px;background:#121a1d;border-bottom:1px solid var(--line,#334046)}
+.rc-toolbar,.rc-heading,.rc-summary,.rc-progress,.rc-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.rc-toolbar h2{margin:0;font-size:16px}.rc-toolbar button{margin-left:auto}.rc-live{font-size:12px;color:#afdbc7}.rc-live:before{content:'●';margin-right:7px}.rc-live.stale{color:#deb57c}
+.rc-card{margin-top:12px;padding:16px;border:1px solid #33464b;border-radius:12px;background:#11181a;min-width:0}.rc-card.rc-stale{border-color:#7a6648}
+.rc-heading{justify-content:space-between;align-items:flex-start}.rc-heading h3{margin:5px 0 0;font-size:18px;overflow-wrap:anywhere}.rc-heading small{font-size:10px;letter-spacing:.08em;color:#a3b9bb}.rc-phase{border:1px solid #415b61;padding:5px 10px;border-radius:20px;font-size:12px}
+.rc-message{font-size:12px;color:#a6b5ba;overflow-wrap:anywhere}.rc-progress{margin:12px 0}.rc-progress progress{flex:1;min-width:90px;max-width:380px;height:9px;accent-color:#a5d2c0}.rc-progress span{font-size:12px;color:#cad9d5}
+.rc-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0}.rc-metric{padding:12px;background:#0c1315;border-radius:8px;min-width:0}.rc-metric small,.rc-metric span{display:block;color:#94aaae;font-size:11px}.rc-metric strong{display:block;font-size:17px;font-weight:600;line-height:1.4;color:#e1eee8;overflow-wrap:anywhere;margin:5px 0}.rc-metric span{font-size:10px;line-height:1.5}
+.rc-secondary{grid-template-columns:repeat(4,minmax(0,1fr))}.rc-secondary .rc-metric strong{font-size:16px}.rc-window-strip{display:flex;gap:5px;flex-wrap:wrap;margin:15px 0}.rc-window-strip span{border:1px solid #33454a;border-radius:5px;padding:5px 8px;font-size:11px;color:#819398}.rc-window-strip .saved{background:#213931;color:#b8dccb}.rc-window-strip .active{border-color:#c0ceb0;color:#f1ebbf}.rc-summary{margin:14px 0;padding:14px;background:#1d292c;border-radius:10px;font-size:13px}.rc-adjustments{margin:12px 0;color:#c5c098;font-size:12px}.rc-adjustments p{font-size:12px}.rc-actions button{min-height:36px}.rc-actions{margin-top:10px}
+#dialog:has(#render-overview-full){width:min(1120px,96vw)}
+@media(max-width:760px){.render-overview{padding:12px}.rc-card{padding:13px}.rc-metrics{grid-template-columns:1fr 1fr}.rc-metrics>.rc-metric:last-child:nth-child(3){grid-column:1/-1}.rc-secondary{grid-template-columns:1fr 1fr}.rc-metric strong{font-size:16px}.rc-heading h3{font-size:17px}.rc-actions button{min-height:42px;flex-grow:1}.rc-toolbar{gap:7px}.rc-toolbar h2{width:100%}.rc-summary{align-items:flex-start}.rc-summary span{width:100%}#dialog:has(#render-overview-full){width:96vw}#render-overview-button{white-space:nowrap}}
+
+/* 1.9.0 notification portal: no backdrop, focus capture, clipping, or modal blur. */
+#notification-layer{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border:0;padding:0;background:transparent;overflow:visible;pointer-events:none;color:inherit;z-index:2147483647}
+#notification-layer::backdrop{background:transparent;backdrop-filter:none;pointer-events:none}
+#notification-layer #activity-stack{margin:0;padding:0;pointer-events:none;bottom:calc(18px + env(safe-area-inset-bottom,0px));right:calc(14px + env(safe-area-inset-right,0px))}
+#notification-layer .activity{pointer-events:auto}
+#notification-layer .activity button{min-height:30px;min-width:30px}
+@media(max-width:600px){#notification-layer .activity{font-size:12px;padding:10px;gap:8px}#notification-layer #activity-stack{max-height:36dvh;max-width:calc(100vw - 20px)}}
+/* Notices remain readable above dialogs, but their text must not block controls
+   underneath on a small screen. Explicit notice action/dismiss buttons stay clickable. */
+#notification-layer .activity{pointer-events:none}
+#notification-layer .activity button,#notification-layer .activity a{pointer-events:auto}

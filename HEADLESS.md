@@ -1,0 +1,17 @@
+# Headless runtime
+
+Use an existing, separately installed WanGP environment. `node start-headless.mjs --setup` saves reviewed nonsecret root/interpreter paths; `--check` runs model-free required checks and advisory hardware inspection. It does not install packages, import the renderer, load weights or accept licenses. Default editor bind is 127.0.0.1:8765. The worker binds to 127.0.0.1:7867 and uses a persistent private token.
+
+The launcher starts or reuses a detached worker. Node and browser polling do not own accepted native tasks. Ctrl-C stops Node; it does not cancel a task or stop the worker. `--status` is read-only. `--stop` explicitly stops an idle worker and refuses active rendering. Do not run another Gradio renderer over the same checkout/GPU. The checkout lock guards duplicate workers, not every external GPU program.
+
+The worker persists jobs/uploads/outputs in SQLite and dispatches one SDK SessionJob at a time. Repeated request IDs are idempotent only for the same payload. Lost replies require lookup/reconciliation, never blind replay. Restart marks in-flight jobs interrupted and pauses queued jobs. A paused queue needs deliberate resume. Cancellation is cooperative: keep the GPU slot owned until cancellation reaches terminal state.
+
+Managed continuation is coordinated by Node. Node failure stops further coordinator submissions while the accepted native task may finish. On return inspect the same job and reconcile archival state before resuming. Bounded continuation uses verified owned decoded-media artifacts and frame counts. It does not promise arbitrary diffusion-checkpoint recovery, or sample-identical equivalence with a monolithic render. Stock/installed SDK capabilities are checked; unsupported operations fail closed.
+
+H3 timing uses 24fps and the 17k+5 generation grid. Retained new frames plus reused overlap form the generated span. Exact output frames/FPS are checked before mapping footage to windows; partial/mismatched files remain unmapped. Historical job snapshots and output ownership are immutable. Native linked audio references cannot vary unsafely between windows; use an explicitly supported independent/managed path after reviewing its context.
+
+Private data defaults to ~/.local/share/h3-director. Keep backups of the entire data directory, browser-origin projects/media, source/output locations and reviewed service settings. Moving files can invalidate stored device/inode/mtime ownership. Follow MIGRATION-2.3.0.md; do not rewrite stat locks or assume copied files are accepted continuation sources.
+
+For network access set H3_HOST deliberately and review H3_HOSTNAMES/H3_PUBLIC_ORIGIN, pairing and transport security. HTTP is not encrypted. Keep the worker private. User services are opt-in via scripts/install-services.mjs; they capture exact paths and are not started by release verification.
+
+Offline tests use fake SDK responses, real disposable HTTP/SQLite/files and CPU codecs. They do not verify new inference, GPU compatibility, model licensing or a clean-machine install. See VALIDATION-2.3.0.md and RELEASE-GATES.md.

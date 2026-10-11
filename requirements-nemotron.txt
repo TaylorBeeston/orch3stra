@@ -1,0 +1,8 @@
+# Research dependency inventory, not an installation recipe.
+# Nemotron setup is blocked pending a verified pinned Transformers revision.
+# Do not install this inventory into WanGP or an existing environment.
+torch>=2.5
+numpy>=1.26
+soundfile>=0.12
+librosa>=0.10
+# transformers: revision unresolved; installation intentionally omitted.

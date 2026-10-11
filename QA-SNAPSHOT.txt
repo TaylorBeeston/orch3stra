@@ -1,0 +1,4 @@
+Orch3stra private 2.3.0 release candidate. Not a published release.
+Worker version: 2.3.0.
+Source-only staging and isolated fixture testing; do not replace a running installation.
+See VALIDATION-2.3.0.md, RELEASE-LICENSE-DECISION.md and THIRD_PARTY_NOTICES.md.

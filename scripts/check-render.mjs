@@ -1,0 +1,46 @@
+#!/usr/bin/env node
+/** Focused voice/compiler + authenticated media transport tests. Fake upstream only. */
+import {disposableData} from './test-storage.mjs';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import http from 'node:http';
+import {once} from 'node:events';
+import {createServer} from '../bridge.mjs';
+const H3=createRequire(import.meta.url)('../core.js');
+let n=0;async function test(label,fn){await fn();console.log('PASS '+label);n++;}
+const p=H3.demo();
+await test('authored set and retention corrections replace conflicting demo boilerplate',()=>{const q=H3.demo(),w=q.windows[1];w.entry='Brown workbench, Orb amid red ribbon, Maker holds the brass key.';w.exit='Maker mouth closed; ribbon remains tangled until the later loosening action.';w.retention='Preserve Maker and Orb identities and the brown workbench.';w.detail='[Shot 1] Same approved set; the red ribbon remains.';const s=H3.compileSections(q,w,1);assert.match(s.detailed_description,/Opening state: Brown workbench/);assert(!s.detailed_description.includes('Frog on felt garden beside toolbox'));assert(!s.retention_analysis.includes('Fully preserve Dot identity'));assert.match(s.retention_analysis,/Preserve Maker and Orb/);});
+p.assets=[{id:'im1',kind:'image',number:4,name:'one.png'},{id:'im2',kind:'image',number:7,name:'two.png'},{id:'a1',kind:'audio',number:8,name:'voice-one.wav',duration:6},{id:'a2',kind:'audio',number:12,name:'voice-two.wav',duration:6}];
+p.subjects[0].assetIds=['im1'];p.subjects[0].speakerId='S2';p.subjects[0].voiceAssetId='a1';
+p.subjects[1].assetIds=['im2'];p.subjects[1].speakerId='S1';p.subjects[1].voiceAssetId='a2';
+await test('Voice dropdown reference participates in the physical pool without a duplicate source checkbox',()=>{assert(H3.usedIds(p,p.windows[0]).has('a1'));assert.equal(H3.tasks(p)[0].audio_guide,'a1');});
+await test('Speaker identity is independent from subject index and voice references remap sparse labels',()=>{const s=H3.compileSections(p,p.windows[1],1);assert.match(s.subject_definitions,/<Audio 1> is the voice-timbre reference for <Subject 1> \(S2\)/);assert.match(s.subject_definitions,/<Audio 2> is the voice-timbre reference for <Subject 2> \(S1\)/);assert(!s.retention_analysis.includes('(S1)'));assert.match(s.summary,/audio reference/);});
+await test('Conflicting dialogue speaker tag is caught',()=>{const q=H3.clone(p);q.windows[0].detail='[Shot 1] <Subject 1> (S1) says <d>[English] New dialogue.</d>';assert(H3.validate(q).some(e=>e.level==='error'&&e.message.includes('bound to S2')));});
+await test('Duplicate speaker and missing/wrong-type voice sources are caught',()=>{const q=H3.clone(p);q.subjects[1].speakerId='S2';q.subjects[0].voiceAssetId='im1';const errors=H3.validate(q);assert(errors.some(e=>e.message.includes('more than one subject')));assert(errors.some(e=>e.message.includes('not an audio')));});
+await test('Reference-bound voices survive project normalization',()=>{const q=H3.normalizeProject(p);assert.equal(q.subjects[0].voiceAssetId,'a1');assert.equal(q.subjects[0].speakerId,'S2');});
+await test('Upscaling does not change the pinned eight-step H3 task settings',()=>{const q=H3.clone(p);q.settings.spatial_upsampling='flashvsr*2';const t=H3.tasks(q)[0];assert.equal(t.spatial_upsampling,'flashvsr*2');assert.equal(t.num_inference_steps,8);assert.equal(t.sample_solver,'euler');assert.equal(t.force_fps,'24');});
+await test('Render plan is immutable metadata and prefixes are played using the target window offset',()=>{const plan=H3.renderPlan(p),job={plan,live:{outputs:[{id:'o',available:true,task_index:1,window_index:3,cumulative:true,created_at:1}]}};const segment=H3.renderSegment(job,p.windows[1].id);assert.equal(segment.start,plan[1].start_frame/24);assert.equal(segment.end,plan[1].end_frame/24);p.windows[1].frames+=17;assert.equal(H3.renderSegment(job,p.windows[1].id).end,segment.end);});
+await test('H3 fresh independent API overlap is valid without source context or timeline duplication',()=>{const q=H3.clone(p);q.modelType='minimax_h3_ref2va_pruned';q.mode='independent';q.windows=q.windows.slice(0,1);q.windows[0].frames=124;q.windows[0].overlap=0;const task=H3.tasks(q)[0];assert.equal(task.sliding_window_overlap,1);assert.equal(task.video_length,124);assert.equal(task.video_source,null);assert.equal(task.video_guide,null);assert.equal(task._director_continuation,undefined);assert.equal(H3.renderPlan(q)[0].start_frame,0);assert.equal(H3.renderPlan(q)[0].end_frame,124);const linked=H3.clone(q);linked.mode='sliding';assert.equal(H3.tasks(linked)[0].sliding_window_overlap,18);const managed=H3.clone(q);managed.mode='managed';assert.throws(()=>H3.tasks(managed),/coordinator/);});
+await test('Independent video review always starts at zero',()=>{const q=H3.clone(p);q.mode='independent';const plan=H3.renderPlan(q),job={plan,live:{outputs:[{available:true,id:'o',task_index:2,window_index:1,cumulative:false,created_at:1}]}};assert.equal(H3.renderSegment(job,q.windows[1].id).start,0);assert.equal(plan[1].task_index,2);});
+await test('Removed prefixes fall back only to a later retained prefix, never a different task',()=>{const plan=H3.renderPlan(p),job={plan,live:{outputs:[{available:false,id:'gone',task_index:1,window_index:1,cumulative:true},{available:true,id:'wrong',task_index:2,window_index:4,cumulative:true},{available:true,id:'later',task_index:1,window_index:3,cumulative:true}]}};assert.equal(H3.renderSegment(job,p.windows[0].id).output.id,'later');assert.equal(H3.renderSegment(job,'not-submitted'),null);});
+const bytes=Buffer.from('test-only-video-bytes'),calls=[];
+const upstream=http.createServer((req,res)=>{calls.push({url:req.url,authorization:req.headers.authorization,range:req.headers.range,method:req.method});if(req.headers.authorization!=='Bearer fixture-token'){res.writeHead(401);res.end();return;}const range=req.headers.range;let body=bytes,code=200,headers={'Content-Type':'video/mp4','Accept-Ranges':'bytes'};if(range){const m=range.match(/^bytes=(\d+)-(\d+)$/);assert(m);body=bytes.subarray(Number(m[1]),Number(m[2])+1);code=206;headers['Content-Range']=`bytes ${m[1]}-${m[2]}/${bytes.length}`;}headers['Content-Length']=body.length;res.writeHead(code,headers);res.end(req.method==='HEAD'?undefined:body);});
+const bridge=createServer({port:0,dataDir:disposableData(),backendOptions:{mode:'legacy'}});
+upstream.listen(0,'127.0.0.1');bridge.listen(0,'127.0.0.1');
+try{
+ await Promise.all([once(upstream,'listening'),once(bridge,'listening')]);
+ const base=`http://127.0.0.1:${bridge.address().port}`,remote=`http://127.0.0.1:${upstream.address().port}`;
+ const health=await(await fetch(base+'/api/health')).json();
+ const make=body=>fetch(base+'/api/media-ticket',{method:'POST',headers:{'Content-Type':'application/json','X-H3-Token':health.token},body:JSON.stringify(body)});
+ const body={url:remote,token:'fixture-token',jobId:'testjob',outputId:'a'.repeat(32)};
+ await test('Playback ticket requires bridge authentication',async()=>{const r=await fetch(base+'/api/media-ticket',{method:'POST',body:JSON.stringify(body)});assert.equal(r.status,403);});
+ await test('Playback ticket rejects arbitrary paths and cross-origin requests',async()=>{assert.equal((await make({...body,outputId:'../../secrets'})).status,502);const r=await fetch(base+'/api/media-ticket',{method:'POST',headers:{Origin:'https://other.invalid','Content-Type':'application/json','X-H3-Token':health.token},body:JSON.stringify(body)});assert.equal(r.status,403);});
+ const ticket=await(await make(body)).json();
+ await test('Opaque playback URL contains no adapter credentials',()=>{assert.match(ticket.url,/^\/api\/media\/[a-f0-9]{64}$/);assert(!JSON.stringify(ticket).includes('fixture-token'));});
+ await test('Video byte range streams through bridge with adapter auth',async()=>{const r=await fetch(base+ticket.url,{headers:{Range:'bytes=2-8'}});assert.equal(r.status,206);assert.equal(r.headers.get('content-range'),`bytes 2-8/${bytes.length}`);assert.equal(await r.text(),bytes.subarray(2,9).toString());assert.equal(calls.at(-1).authorization,'Bearer fixture-token');assert.equal(calls.at(-1).url,'/jobs/testjob/outputs/'+'a'.repeat(32));});
+ await test('HEAD serves metadata without a video body',async()=>{const r=await fetch(base+ticket.url,{method:'HEAD'});assert.equal(r.status,200);assert.equal(Number(r.headers.get('content-length')),bytes.length);assert.equal(await r.text(),'');});
+ await test('Unknown playback capabilities fail closed',async()=>{assert.equal((await fetch(base+'/api/media/not-a-ticket')).status,410);});
+ await test('Full-file transfer remains binary instead of JSON',async()=>{const r=await fetch(base+ticket.url);assert.equal(r.status,200);assert.deepEqual(Buffer.from(await r.arrayBuffer()),bytes);});
+ await test('Expired capability no longer reaches upstream',async()=>{const now=Date.now, count=calls.length;Date.now=()=>now()+31*60*1000;try{assert.equal((await fetch(base+ticket.url)).status,410);assert.equal(calls.length,count);}finally{Date.now=now;}});
+}finally{bridge.closeAllConnections();upstream.closeAllConnections();await Promise.all([new Promise(r=>bridge.close(r)),new Promise(r=>upstream.close(r))]);}
+console.log(`\n${n} focused render/voice/transport checks passed. Fake upstream, not live WanGP.`);

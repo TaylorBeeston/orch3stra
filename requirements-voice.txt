@@ -1,0 +1,4 @@
+# Legacy optional voice dependency inventory. Use setup-tools with protected constraints.
+# Do not install this file directly into an existing WanGP environment.
+yt-dlp[default]>=2025.11.12
+faster-whisper>=1.2,<2

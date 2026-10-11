@@ -1,0 +1,67 @@
+/* Focused work areas. Retains the existing native modal/accessibility boundary. */
+.usability-shell .topbar{height:76px;gap:20px;padding:12px 24px;flex-wrap:nowrap}
+.usability-shell .topbar>.header-actions{display:none!important}
+.usability-shell .project-head{display:block;flex:1;min-width:80px;max-width:640px}
+.usability-shell .project-head input{width:100%;font-size:16px}
+.workspace-header-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0}
+.workspace-header-actions button{min-height:38px}
+.workspace-navigation{display:flex;align-items:center;gap:6px;padding:10px 24px;border-bottom:1px solid var(--line);background:var(--surface);overflow-x:auto}
+.workspace-navigation button{min-height:40px;padding:8px 16px;white-space:nowrap;background:transparent;border-color:transparent;font-size:13px}
+.workspace-navigation button.active{background:var(--accent-dim,#29463b);border-color:#587a6a;color:var(--accent)}
+.workspace-nav-spacer{flex:1}
+.usability-shell .workspace{height:calc(100dvh - 171px);grid-template-columns:0 minmax(0,1fr) 0}
+.usability-shell .workspace>.library,.usability-shell .workspace>.inspector{display:none}
+.usability-shell .workspace>.main{grid-column:2!important;min-width:0}
+.usability-shell .film-quicksteps{display:none}
+.usability-shell[data-workspace="overview"] .main>:not(#workspace-home),
+.usability-shell[data-workspace="references"] .main>:not(#workspace-home),
+.usability-shell[data-workspace="post"] .main>:not(#workspace-home){display:none!important}
+.usability-shell[data-workspace="story"] .main>:not(#workspace-home):not(.brief){display:none!important}
+.usability-shell[data-workspace="timeline"] .brief{display:none}
+#workspace-home{padding:32px clamp(18px,4vw,60px) 36px;max-width:1440px;margin:0 auto;width:100%;box-sizing:border-box}
+.workspace-welcome{max-width:860px;margin-bottom:22px}
+.workspace-welcome h1{font-size:clamp(26px,3vw,38px);font-weight:650;line-height:1.18;letter-spacing:-.025em;margin:8px 0 12px}
+.workspace-welcome>p:not(.workspace-kicker){font-size:15px;color:var(--muted);line-height:1.7}
+.workspace-kicker{font-size:11px;font-weight:650;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.workspace-summary{display:flex;flex-wrap:wrap;gap:12px 22px;color:var(--muted);font-size:12px;padding:12px 0 24px}
+.workspace-card-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.workspace-card{padding:24px;border:1px solid var(--line);background:var(--surface);border-radius:12px;min-width:0;display:flex;flex-direction:column;align-items:flex-start}
+.workspace-card h3{font-size:19px;line-height:1.3;margin:12px 0 4px}
+.workspace-card p{font-size:14px;line-height:1.65;color:var(--muted);max-width:55ch;margin:8px 0 20px}
+.workspace-card button{margin-top:auto;min-height:42px;padding:8px 14px;white-space:normal;text-align:left}
+#dialog.workspace-dialog[open]{width:min(1440px,calc(100% - 48px));max-width:calc(100% - 48px);height:calc(var(--h3-visual-height,100dvh) - 40px);max-height:calc(var(--h3-visual-height,100dvh) - 40px);border-radius:12px}
+#dialog.workspace-dialog::backdrop{backdrop-filter:none;background:rgba(0,0,0,.6)}
+.usability-shell #dialog .dialog-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:16px;row-gap:4px;padding:14px 20px}
+.usability-shell #workspace-back{grid-column:1;grid-row:1/3;padding:8px 12px;max-width:160px;min-height:42px}
+.usability-shell .workspace-crumb{grid-column:2;grid-row:1;font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.usability-shell #dialog-title{grid-column:2;grid-row:2;font-size:20px;line-height:1.4;margin:0}
+.usability-shell #dialog .dialog-head>[data-action="close-dialog"]{grid-column:3;grid-row:1/3}
+.usability-shell #dialog-body{padding:24px 28px;font-size:14px}
+.usability-shell #dialog-body>p{max-width:95ch;line-height:1.65}
+.usability-shell #dialog-body pre{max-height:280px;overflow:auto}
+.usability-shell #dialog-body button{min-height:38px}
+.workspace-tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:22px 0}
+.workspace-tool-grid button{min-height:54px;width:100%;white-space:normal;text-align:left;font-size:14px}
+.workspace-search{display:block;max-width:660px}.workspace-search input{display:block;width:100%;margin-top:10px;min-height:46px;font-size:16px}
+.workspace-help{color:var(--muted);font-size:14px;line-height:1.7}
+.coverage-inspection-recovery h3{font-size:17px}.coverage-inspection-recovery li{margin:8px 0}.coverage-inspection-recovery details{margin-top:14px}
+@media(max-width:760px){
+ .usability-shell .topbar{height:auto;min-height:68px;padding:10px 12px;gap:10px;flex-wrap:wrap}
+ .usability-shell .brand{min-width:94px}.usability-shell .project-head{max-width:calc(100% - 110px)}
+ .workspace-header-actions{width:100%;justify-content:flex-end}.workspace-header-actions #undo,.workspace-header-actions #redo{display:inline-flex}
+ .workspace-navigation{padding:6px 10px;gap:2px}.workspace-navigation button{padding:8px 12px;font-size:12px;min-height:44px}
+ .workspace-nav-spacer{display:none}.usability-shell .workspace{height:auto;min-height:calc(100dvh - 230px)}
+ #workspace-home{padding:24px 16px}.workspace-card-grid{grid-template-columns:minmax(0,1fr);gap:12px}
+ .workspace-card{padding:20px}.workspace-card p{font-size:14px}.workspace-card button{min-height:44px;width:100%}
+ #dialog.workspace-dialog[open]{width:100%;max-width:100%;height:var(--h3-visual-height,100dvh);max-height:var(--h3-visual-height,100dvh);inset:var(--h3-visual-top,0) 0 auto;margin:0;border-radius:0}
+ .usability-shell #dialog .dialog-head{padding:10px;gap:8px}.usability-shell #dialog-title{font-size:16px}
+ .usability-shell #workspace-back{max-width:108px;font-size:12px}.usability-shell #dialog-body{padding:16px}
+ .workspace-tool-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+.workspace-window-settings{max-width:1000px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.workspace-window-settings .inspector-block{margin:0;padding:20px;border:1px solid var(--line);border-radius:10px}
+.workspace-window-settings .inspector-field textarea{width:100%;min-height:90px;box-sizing:border-box}
+@media(max-width:760px){.workspace-window-settings{grid-template-columns:minmax(0,1fr);gap:12px}.workspace-window-settings .inspector-block{padding:16px}}
+
+body.post-open>.workspace-navigation{display:none}

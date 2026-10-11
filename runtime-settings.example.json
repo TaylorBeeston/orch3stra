@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "root": "/path/to/existing/Wan2GP",
+  "python": "/path/to/existing/Wan2GP/.venv/bin/python"
+}

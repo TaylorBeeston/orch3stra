@@ -1,0 +1,21 @@
+/* Film desk: staged creation, direct repair, predictable single-column phone layouts. */
+.film-quicksteps,.film-steps,.film-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 16px;}
+.film-quicksteps{padding:8px 0 12px;border-bottom:1px solid var(--line,#30383c);}
+.film-quicksteps span{color:#85918d}.film-quicksteps button{font-size:12px;padding:7px 10px}
+.film-desk-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:24px;}
+.film-desk-grid>section{min-width:0}.film-card{border:1px solid #34413f;background:#151c1d;border-radius:10px;padding:16px;margin:12px 0;overflow-wrap:anywhere;}
+.film-card pre{white-space:pre-wrap;word-break:break-word;max-height:230px;overflow:auto}.film-card p{white-space:pre-wrap;line-height:1.65;}
+.film-error{border-left:3px solid #e2b085}.film-scroll{max-height:52vh;overflow:auto;padding:2px 5px;overscroll-behavior:contain;}
+.film-conversation{height:300px;overflow:auto;border:1px solid #3c4845;border-radius:10px;padding:12px;overscroll-behavior:contain;}
+.film-chat{padding:12px;background:#151c1d;border-radius:10px;margin-bottom:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.film-user{background:#243730}.film-chat p{margin:4px 0;}
+.film-image-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,215px),1fr));gap:12px;}
+.film-image-card{border:1px solid #36413f;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;font-size:13px;overflow-wrap:anywhere;}
+.film-image-card img{width:100%;height:135px;object-fit:contain;background:#0f1416;border-radius:6px;}
+.film-image-card input[type=checkbox],.film-card input[type=checkbox]{width:20px;height:20px;vertical-align:middle;margin-right:6px;}
+.film-home-button{margin-left:auto;flex-shrink:0;font-size:12px}.film-back{margin-bottom:10px}
+.token-shelf{display:flex;gap:5px;flex-wrap:wrap;margin:10px 0}.token-shelf button{font-size:12px;padding:6px 8px}
+#dialog[data-panel^=film],#dialog[data-panel^=clinic],#dialog[data-panel=voice-studio],#dialog[data-panel=codex]{width:min(1160px,96vw);max-height:min(92dvh,var(--h3-visual-height,92vh));}
+#dialog[data-panel^=film] .dialog-actions,#dialog[data-panel^=clinic] .dialog-actions,#dialog[data-panel=voice-studio] .dialog-actions{position:sticky;bottom:-1px;background:#172021;padding:16px 0;margin-top:16px;z-index:2;}
+#clinic-field{width:100%;min-height:220px;font-size:14px;line-height:1.7}.film-card audio{display:block;width:100%;margin:12px 0}
+#codex-user-code{font-size:24px;letter-spacing:2px;font-family:monospace}#codex-model{min-height:180px;max-width:100%}
+@media(max-width:760px){.film-desk-grid{grid-template-columns:1fr}.film-image-grid{grid-template-columns:1fr}.film-quicksteps{gap:4px}.film-quicksteps button{min-height:40px}.film-home-button{font-size:11px;padding:7px}.film-card{padding:13px}.film-conversation{height:235px}.film-scroll{max-height:55dvh}.film-steps button{flex:1 1 100px;min-height:44px}#dialog[data-panel^=film],#dialog[data-panel^=clinic],#dialog[data-panel=voice-studio],#dialog[data-panel=codex]{width:calc(100vw - 12px);margin:6px;max-width:none;max-height:calc(var(--h3-visual-height,100dvh) - 12px)}.film-nav button{min-height:42px}.film-card textarea{font-size:16px}}

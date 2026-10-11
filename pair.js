@@ -1,0 +1,2 @@
+'use strict';
+document.querySelector('#pair-form').addEventListener('submit',async e=>{e.preventDefault();const status=document.querySelector('#pair-status');status.textContent='Pairing…';try{const r=await fetch('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.querySelector('#pair-password').value})});const d=await r.json();if(!r.ok)throw Error(d.error);location.reload();}catch(e){status.textContent=e.message;}});
