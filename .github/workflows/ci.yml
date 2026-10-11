@@ -1,0 +1,35 @@
+name: CPU source checks
+on:
+  push:
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: cpu-source-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-and-packaging:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Deterministic fixtures and disposable release packaging
+        shell: bash
+        run: |
+          ci_home=$(mktemp -d)
+          trap 'rm -rf "$ci_home"' EXIT
+          env -i PATH="$PATH" HOME="$ci_home/home" CODEX_HOME="$ci_home/codex" \
+            H3_DATA_DIR="$ci_home/data" H3_HEADLESS_DATA_DIR="$ci_home/headless" \
+            H3_WANGP_ROOT="$ci_home/absent-backend" H3_WANGP_BACKEND=legacy \
+            PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+            GRADIO_ANALYTICS_ENABLED=False python -B scripts/check-ci.py

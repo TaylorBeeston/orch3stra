@@ -1,0 +1,11 @@
+# CPU source checks
+
+The `CPU source checks` GitHub Actions workflow runs on pushes to main/ci branches and pull requests targeting main. It uses Ubuntu 24.04, Node 22 and Python 3.12, with a six-minute job limit and per-command timeouts. No npm/pip packages or backend are installed. Official checkout/runtime actions are pinned to full release commit hashes; checkout does not persist credentials. Workflow permissions are `contents: read`; it uses no user secrets, privileged pull-request trigger, deployment or publishing step.
+
+Checks cover all allowlisted JavaScript/Python syntax; storage data-URL decoding, timing, planner timing, editing/take dependencies, speech-review metadata and speech-quality classification using synthetic data; the three packaging unit tests; and actual disposable source ZIP/TAR builds/extractions with integrity, manifest/checksum, reviewed inventory, required notices and excluded research-material checks. Two builds verify ZIP reproducibility. TAR gzip timestamps are not claimed reproducible.
+
+Each run clears inherited test-process environment variables and provides fresh HOME, CODEX_HOME and H3 data paths, an absent backend path and offline model flags. GitHub-hosted runners provide the clean machine boundary; this is not a network-disabled or hermetic sandbox. The selected tests have no provider/model/network dependency. CPU speech fixtures do not run ASR. Node/Python setup downloads runtimes, not models. The package build is validation only: no archives are uploaded or released.
+
+CI excludes Chromium/UI interaction, Gradio/WanGP compatibility, FFmpeg media rendering, real model/reference judgment, ASR, GPU inference, hardware fit, production data, full recovery and physical-device behavior. A green run does not establish those capabilities or license clearance for unbundled models. No cache, credential, paid service, automatic publication or repository-setting change is required.
+
+Run the same checks with `python3 -B scripts/check-ci.py` in an isolated checkout using Node 22 and Python 3.12+. Tests run with standard libraries only. Keep the reviewed source allowlist current when adding distributable files; the CI runner regenerates disposable archive manifests rather than verifying an edited Git checkout as an old release extraction.
