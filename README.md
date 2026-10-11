@@ -44,3 +44,7 @@ Render-intent storage permits one bridge writer per data directory. A second wri
 The default headless launcher acquires the same writer ownership before worker startup/reuse. A refused additional launcher does not reach worker health/bootstrap or runtime recovery. Read-only status and explicit setup/check/stop commands retain their separate scopes.
 
 SIGINT/SIGTERM waits for the full manager/write shutdown barrier. If that cannot finish within four seconds, Node is forcibly terminated and the writer crash lock is preserved for inspection; this is not a confirmed graceful stop. See the recovery runbook before restarting.
+
+## Contributor checks
+
+[CPU-only CI](docs/CI.md) checks deterministic fixtures and source packaging on pull requests. It does not run WanGP, models, ASR, GPU generation or deployment.

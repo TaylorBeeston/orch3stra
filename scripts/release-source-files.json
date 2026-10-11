@@ -1,4 +1,5 @@
 [
+  ".github/workflows/ci.yml",
   ".gitignore",
   "AGENTS.md",
   "AI-REQUESTS.md",
@@ -60,6 +61,7 @@
   "core.js",
   "coverage-ui.js",
   "direction-ui.js",
+  "docs/CI.md",
   "docs/INTENT-LOCK-RECOVERY.md",
   "docs/WANGP-DECODED-API.md",
   "docs/WANGP-MUX-RECOVERY.md",
@@ -118,6 +120,7 @@
   "scripts/check-all.mjs",
   "scripts/check-backup-audit.mjs",
   "scripts/check-candidate-review.mjs",
+  "scripts/check-ci.py",
   "scripts/check-cli-shutdown.mjs",
   "scripts/check-codex.mjs",
   "scripts/check-continuity.mjs",
