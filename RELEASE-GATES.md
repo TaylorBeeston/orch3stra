@@ -1,6 +1,6 @@
 # Publication gates
 
-This source-only candidate has not been published or installed over the canonical running app.
+This source-only candidate is published. Local cutover must preserve data and pass the applicable checks below; publication alone does not verify runtime/model readiness.
 
 - MIT was selected by the owner for original app-owned source. Preserve third-party terms and review remaining provenance before distributing copied material.
 - Review model/backend terms for the exact separately installed artifacts and intended use/output distribution. No weights or WanGP checkout are bundled; architectural separation does not grant model/backend permissions.

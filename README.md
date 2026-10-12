@@ -2,7 +2,7 @@
 
 Orch3stra is a browser editor for planning, reference selection, local WanGP video rendering, and non-destructive finishing. Former names were Shotweft and H3 Director; existing `H3_*` settings and project data remain compatible.
 
-This is a private source-only candidate. The owner selected MIT for original app-owned source; see LICENSE. Public publication has not been requested. Third-party materials and separately installed models retain their own terms. See [release gates](RELEASE-GATES.md) and [third-party terms](THIRD_PARTY_NOTICES.md).
+This is a published source-only release candidate. The owner selected MIT for original app-owned source; see LICENSE. The canonical repository is [TaylorBeeston/orch3stra](https://github.com/TaylorBeeston/orch3stra). Third-party materials and separately installed models retain their own terms. See [release gates](RELEASE-GATES.md) and [third-party terms](THIRD_PARTY_NOTICES.md).
 
 ## First film
 
@@ -48,3 +48,5 @@ SIGINT/SIGTERM waits for the full manager/write shutdown barrier. If that cannot
 ## Contributor checks
 
 [CPU-only CI](docs/CI.md) checks deterministic fixtures and source packaging on pull requests. It does not run WanGP, models, ASR, GPU generation or deployment.
+
+Use one Git checkout for development and launch; see [canonical source and cutover](docs/CANONICAL-SOURCE.md). Existing project storage keeps its legacy `h3-director` name.

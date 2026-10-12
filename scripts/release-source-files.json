@@ -61,6 +61,7 @@
   "core.js",
   "coverage-ui.js",
   "direction-ui.js",
+  "docs/CANONICAL-SOURCE.md",
   "docs/CI.md",
   "docs/INTENT-LOCK-RECOVERY.md",
   "docs/WANGP-DECODED-API.md",
