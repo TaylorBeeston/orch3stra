@@ -1,4 +1,4 @@
 Orch3stra published source-only 2.3.0 release candidate. Runtime and model limits remain documented.
 Worker version: 2.3.0.
-Source-only staging and isolated fixture testing; do not replace a running installation.
+Source-only staging and isolated fixture testing; local cutover requires the reviewed, idle migration procedure in docs/CANONICAL-SOURCE.md.
 See VALIDATION-2.3.0.md, RELEASE-LICENSE-DECISION.md and THIRD_PARTY_NOTICES.md.
