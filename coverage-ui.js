@@ -168,7 +168,7 @@ window.H3CoverageUI = {create(ctx) {
     for(const [id,blob]of missing)await Store.putBlob(id,blob);
   }
   async function saveProgressCopy(){
-    if(!confirm('Save approved reference progress as a SEPARATE project copy? Completed-window selections and approved images are kept. Unfinished windows retain their original selections. The original project and run remain unchanged; nothing is generated or cancelled.'))return;
+    if(!await askConfirm('Save approved reference progress as a SEPARATE project copy? Completed-window selections and approved images are kept. Unfinished windows retain their original selections. The original project and run remain unchanged; nothing is generated or cancelled.'))return;
     const source=H.clone(project()),stamp=D.stamp(source),snapshot=await checkpoint(),copy=A.progressCopy(source,snapshot);
     const blobs=await fetchApproved(snapshot);
     if(project().id!==source.id||D.stamp(project())!==stamp)throw Error('Your project changed during the save. The server checkpoint is safe; retry from the original project.');
@@ -278,7 +278,7 @@ window.H3CoverageUI = {create(ctx) {
     if(!P.config.model||!P.config.images){ctx.connections();throw Error('Choose a planning model with visual input enabled.');}
     if(pol.allowImages&&(!cfg.modelType||!cfg.licenseAccepted))throw Error('Choose your Image preset and check source/model authorization.');
     if(!scopeIds.length)throw Error('Choose at least one window.');
-    if(!confirm(`${authorize?'Update and continue this saved run':'Fill missing coverage for '+scopeIds.length+' windows'}?\nUp to ${pol.maxImages} image attempts and ${pol.maxCalls} AI calls in total. ${authorize&&currentRun?.imageRecovery?'One new image attempt retries the saved prompt in FG mode; no planning call is repeated. ':authorize&&currentRun?.planRecovery?.kind==='repair'?'One new planning call will repair only the rejected current step. ':''}Existing source pixels go to ${P.config.provider}/${P.config.model}. ${config.autoApply?'Apply only if the project is unchanged.':'Keep results for review.'} Dialogue, timing, source files and old renders are preserved.`))return;
+    if(!await askConfirm(`${authorize?'Update and continue this saved run':'Fill missing coverage for '+scopeIds.length+' windows'}?\nUp to ${pol.maxImages} image attempts and ${pol.maxCalls} AI calls in total. ${authorize&&currentRun?.imageRecovery?'One new image attempt retries the saved prompt in FG mode; no planning call is repeated. ':authorize&&currentRun?.planRecovery?.kind==='repair'?'One new planning call will repair only the rejected current step. ':''}Existing source pixels go to ${P.config.provider}/${P.config.model}. ${config.autoApply?'Apply only if the project is unchanged.':'Keep results for review.'} Dialogue, timing, source files and old renders are preserved.`))return;
     if(config.license)try{localStorage.setItem(licenseKey,licenseRevision);}catch{}
     const pid=project().id;
     mutate(()=>{project().coveragePreferences={...config,license:undefined};});await Store.save(project());
@@ -298,7 +298,7 @@ window.H3CoverageUI = {create(ctx) {
     const issue=issues()[index],p=currentRun?.project||project(),w=p.windows.find(w=>w.id===issue.windowId);
     const requirementIds=R.unique((issue.reasons||[]).map(r=>r.requirementId).filter(Boolean));
     if(['confirm-coverage','approve-image'].includes(kind)&&!document.querySelector(`[data-coverage-issue="${index}"] img`)?.naturalWidth)throw Error('Wait for the actual picture to load before confirming it.');
-    if(!confirm(kind==='approve-image'?`Approve ${issue.assetName} for reference use? This explicitly changes its approval in the prepared library; original pixels stay unchanged.`:kind==='allow-here'?`Allow ${issue.assetName} in ${w.title}? This changes only this window’s exclusions; original pins and media stay.`:`Confirm from the displayed pixels that ${issue.assetName} satisfies these exact state requirements?\n${requirementIds.map(id=>R.requirements(p,w).needs.find(n=>n.id===id)?.description).join('\n')}\nThis is a scoped label confirmation, not an image edit.`))return;
+    if(!await askConfirm(kind==='approve-image'?`Approve ${issue.assetName} for reference use? This explicitly changes its approval in the prepared library; original pixels stay unchanged.`:kind==='allow-here'?`Allow ${issue.assetName} in ${w.title}? This changes only this window’s exclusions; original pins and media stay.`:`Confirm from the displayed pixels that ${issue.assetName} satisfies these exact state requirements?\n${requirementIds.map(id=>R.requirements(p,w).needs.find(n=>n.id===id)?.description).join('\n')}\nThis is a scoped label confirmation, not an image edit.`))return;
     const operation={kind,assetId:issue.assetId,sourceStamp:issue.sourceStamp||R.stamp(p,w),requirementIds,reason:'User visually confirmed the displayed existing reference for the exact current-window requirements.'};
     if(currentRun){currentRun=await P.call('reference-agent',{action:'repair-conflict',id:activeId,windowId:w.id,operation,confirm:true});}
     else{const q=H.clone(p);R.repairConflict(q,q.windows.find(x=>x.id===w.id),operation);mutate(()=>Object.assign(project(),q));}
@@ -322,7 +322,7 @@ window.H3CoverageUI = {create(ctx) {
       case'show-limits':$('#coverage-run-limits').open=true;$('#coverage-run-limits').scrollIntoView({block:'start',behavior:'smooth'});return;
       case'extend-window':{
         const x=currentRun?.budgetState;if(!x?.canExtend)throw Error('Refresh this safely parked run to review the allowance.');
-        if(!confirm(`Allow 20 image attempts TOTAL for this window (${x.attempts} already spent)? Earlier attempts and all run-wide limits remain. ${currentRun.candidateReview?'The current candidate still needs your decision.':'Continue the saved step without repeating completed windows.'}`))return;
+        if(!await askConfirm(`Allow 20 image attempts TOTAL for this window (${x.attempts} already spent)? Earlier attempts and all run-wide limits remain. ${currentRun.candidateReview?'The current candidate still needs your decision.':'Continue the saved step without repeating completed windows.'}`))return;
         await P.call('reference-agent',{action:'extend-window',id:activeId,limit:20,budgetStamp:x.stamp,confirm:true,resume:true,planner:planner()});errors.delete(activeId);
         currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});render();schedule();return;
       }
@@ -340,21 +340,21 @@ window.H3CoverageUI = {create(ctx) {
       case'open-ai':window.dispatchEvent(new CustomEvent('h3-open-ai',{detail:{id:b.dataset.id}}));return;
       case'retry-image':{
         const recovery=currentRun?.imageRecovery;if(!recovery)throw Error('Refresh this run to check the failed image job.');
-        if(!confirm('Retry this failed image request as ONE complete prompt? This requires the updated idle worker and uses one new image attempt. No planning request or completed window is repeated. The candidate will still be visually reviewed.'))return;
+        if(!await askConfirm('Retry this failed image request as ONE complete prompt? This requires the updated idle worker and uses one new image attempt. No planning request or completed window is repeated. The candidate will still be visually reviewed.'))return;
         await P.call('reference-agent',{action:'retry-image',id:activeId,planner:planner(),recoveryStamp:recovery.stamp,confirm:true});errors.delete(activeId);
         const a=window.H3Activity?.start('Retrying saved reference image');if(a)activities.set(activeId,a);
         currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});render();schedule();return;
       }
       case'retry-inspection':{
         const x=currentRun?.inspectionRecovery;if(!x||x.kind!=='repair')throw Error('Refresh this run before repairing its image inspection.');
-        if(!confirm('Recheck only unresolved images in this window? This makes one new AI request with actual image pixels, within the existing allowance. Already accepted rows, generated pictures and completed windows are preserved. No Qwen generation starts merely to repair this reply; the authorized workflow can continue afterward.'))return;
+        if(!await askConfirm('Recheck only unresolved images in this window? This makes one new AI request with actual image pixels, within the existing allowance. Already accepted rows, generated pictures and completed windows are preserved. No Qwen generation starts merely to repair this reply; the authorized workflow can continue afterward.'))return;
         await P.call('reference-agent',{action:'retry-inspection',id:activeId,planner:planner(),recoveryStamp:x.stamp,confirm:true});errors.delete(activeId);
         const a=window.H3Activity?.start('Rechecking image inspection');if(a)activities.set(activeId,a);
         currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});render();schedule();return;
       }
       case'retry-plan':{
         const recovery=currentRun?.planRecovery;if(recovery?.kind!=='repair')throw Error('Refresh this run to inspect the rejected planning step.');
-        if(!confirm('Request one new image plan for this blocked window, within the current AI allowance? The planner receives the validation error. Finished windows, accepted images, and the original response remain. Later generation/review continues under the existing policy.'))return;
+        if(!await askConfirm('Request one new image plan for this blocked window, within the current AI allowance? The planner receives the validation error. Finished windows, accepted images, and the original response remain. Later generation/review continues under the existing policy.'))return;
         await P.call('reference-agent',{action:'retry-plan',id:activeId,planner:planner(),recoveryStamp:recovery.stamp,confirm:true});errors.delete(activeId);
         const a=window.H3Activity?.start('Repairing reference plan');if(a)activities.set(activeId,a);
         currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});render();schedule();return;
@@ -364,16 +364,16 @@ window.H3CoverageUI = {create(ctx) {
         const x=currentRun?.candidateReview;if(!x)throw Error('Refresh this run to inspect the current candidate.');
         const draft=candidateDrafts.get(x.candidateId)||{prompt:x.prompt,reason:''};
         const retry=action==='retry-candidate';
-        if(!confirm(retry?`Reject this image and generate one replacement? ${x.requiresExtraAttempt?'Authorize ONE additional attempt for this window. ':''}Prior attempts, accepted pictures, and completed windows stay intact. Generation and visual review use the existing total allowance.`:'Reject this image and park the reference run? No new AI or GPU work will start; prior work is retained.'))return;
+        if(!await askConfirm(retry?`Reject this image and generate one replacement? ${x.requiresExtraAttempt?'Authorize ONE additional attempt for this window. ':''}Prior attempts, accepted pictures, and completed windows stay intact. Generation and visual review use the existing total allowance.`:'Reject this image and park the reference run? No new AI or GPU work will start; prior work is retained.'))return;
         const prompt=draft.prompt+(draft.reason.trim()?'\nUser correction for this attempt:\n'+draft.reason.trim():'');
         await P.call('reference-agent',{action,id:activeId,planner:planner(),candidateId:x.candidateId,candidateStamp:x.stamp,extraAttempt:retry&&x.requiresExtraAttempt,prompt,reason:draft.reason,confirm:true});errors.delete(activeId);
         if(retry){const a=window.H3Activity?.start('Retrying rejected candidate');if(a)activities.set(activeId,a);}
         currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});render();schedule();return;
       }
-      case'fresh':{if(!confirm('Cancel this parked reference workflow and prepare a new run from your current edited project? Completed images/history remain in the old run. No new AI or GPU request starts until you click Fill missing coverage.'))return;const old=activeId;await P.call('reference-agent',{action:'cancel',id:old});let r;for(let i=0;i<15;i++){r=await P.call('reference-agent',{action:'get',id:old});if(TERMINAL.has(r.status))break;await new Promise(resolve=>setTimeout(resolve,500));}if(!TERMINAL.has(r.status))throw Error('The old run is still cancelling. Wait and retry; no new request was submitted.');activeId='';currentRun=null;scopeIds=scopeIds.filter(id=>project().windows.some(w=>w.id===id));await loadRows();return render();}
+      case'fresh':{if(!await askConfirm('Cancel this parked reference workflow and prepare a new run from your current edited project? Completed images/history remain in the old run. No new AI or GPU request starts until you click Fill missing coverage.'))return;const old=activeId;await P.call('reference-agent',{action:'cancel',id:old});let r;for(let i=0;i<15;i++){r=await P.call('reference-agent',{action:'get',id:old});if(TERMINAL.has(r.status))break;await new Promise(resolve=>setTimeout(resolve,500));}if(!TERMINAL.has(r.status))throw Error('The old run is still cancelling. Wait and retry; no new request was submitted.');activeId='';currentRun=null;scopeIds=scopeIds.filter(id=>project().windows.some(w=>w.id===id));await loadRows();return render();}
       case'resume':case'pause':case'cancel':case'approve':{
-        if(action==='approve'&&!confirm('Approve the specific image request or displayed candidate, within this run’s existing budget?'))return;
-        if(action==='cancel'&&!confirm('Cancel only this reference run? Accepted sources and all video outputs are retained.'))return;
+        if(action==='approve'&&!await askConfirm('Approve the specific image request or displayed candidate, within this run’s existing budget?'))return;
+        if(action==='cancel'&&!await askConfirm('Cancel only this reference run? Accepted sources and all video outputs are retained.'))return;
         await P.call('reference-agent',{action,id:activeId,planner:planner(),answer:$('#coverage-answer')?.value||answers.get(activeId),candidateId:currentRun?.pending?.candidateId,confirm:action==='approve'});
         errors.delete(activeId);currentRun=await P.call('reference-agent',{action:'diagnose',id:activeId});return render();
       }

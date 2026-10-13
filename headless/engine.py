@@ -139,6 +139,16 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
         self.closed = False
         self.active_id = None
         self.dispatcher = None
+        # WanGP keeps the last model pinned in RAM (about 20 GB for H3) while idle.
+        # Release it after this many idle seconds; 0 disables. The next job reloads it.
+        try:
+            self.idle_release_seconds = max(0.0, float(os.environ.get('H3_IDLE_RELEASE_SECONDS', '900')))
+        except ValueError:
+            self.idle_release_seconds = 900.0
+        self.model_resident = False
+        self.release_requested = False
+        self.idle_since = time.monotonic()
+        self.last_release = None
         with self.lock:
             row = self.db.execute("SELECT value FROM meta WHERE key='paused'").fetchone()
             self.paused = bool(json.loads(row[0])) if row else False
@@ -171,6 +181,30 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
         if start_dispatcher:
             self.dispatcher = threading.Thread(target=self._dispatch, name='h3-headless-dispatch', daemon=True)
             self.dispatcher.start()
+
+    def _release_model(self):
+        """Free WanGP's pinned model RAM/VRAM between jobs. Called by the dispatcher (no job running)."""
+        with self.lock:
+            reason = 'requested' if self.release_requested else 'idle'
+            self.release_requested = False
+            self.model_resident = False
+        try:
+            close = getattr(self.session, 'close', None)
+            if callable(close):
+                close()
+            self.last_release = {'at': time.time(), 'reason': reason}
+        except Exception as exc:
+            self.last_release = {'at': time.time(), 'reason': reason, 'error': str(exc)[:300]}
+
+    def request_release(self):
+        with self.wake:
+            if self.active_id:
+                raise ValueError('A job is running. Model memory is released after it finishes and the queue is idle.')
+            resident = self.model_resident
+            self.release_requested = resident
+            self.wake.notify_all()
+        return {'requested': resident, 'model_resident': resident,
+                'message': 'Releasing the loaded model; the next job reloads it.' if resident else 'No model is loaded.'}
 
     def _save_pause(self, value=None):
         self.db.execute('INSERT OR REPLACE INTO meta VALUES (?,?)', ('paused', json_text(self.paused if value is None else bool(value))))
@@ -401,7 +435,12 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
             with self.wake:
                 while not self.closed:
                     candidates = [k for k, j in self.jobs.items() if j['state']['status'] == 'queued']
-                    if self.session is not None and self.runtime_state == 'ready' and not self.paused and candidates:
+                    runnable = self.session is not None and self.runtime_state == 'ready' and not self.paused and candidates
+                    if not runnable and self.model_resident and self.session is not None and (self.release_requested or (
+                            self.idle_release_seconds and time.monotonic()-self.idle_since >= self.idle_release_seconds)):
+                        job_id = None
+                        break
+                    if runnable:
                         job_id = candidates[0]
                         self.active_id = job_id
                         item = self.jobs[job_id]
@@ -412,6 +451,10 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
                     self.wake.wait(.5)
                 if self.closed:
                     return
+            if job_id is None:
+                # Outside the engine lock: health/queue requests stay responsive while WanGP frees memory.
+                self._release_model()
+                continue
             try:
                 self._run(job_id)
             except Exception as exc:
@@ -424,6 +467,8 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
                 with self.wake:
                     self.jobs[job_id]['job'] = None
                     self.active_id = None
+                    self.model_resident = True
+                    self.idle_since = time.monotonic()
                     self.wake.notify_all()
 
     def _run(self, job_id):
@@ -877,7 +922,7 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
                     'instance': str(self.root), 'runtime_state': self.runtime_state, 'runtime_error': self.runtime_error,
                     'runtime': self.runtime_info, 'browser_required': False, 'plugin_required': False,
                     'persistent_queue': True, 'idempotency': True, 'active_job_id': self.active_id,
-                    'queue_paused': self.paused, 'note': 'Official WanGP Python API; standalone runtime. No Gradio page is needed.'}
+                    'queue_paused': self.paused, 'model_resident': self.model_resident, 'idle_release_seconds': self.idle_release_seconds, 'last_model_release': self.last_release, 'note': 'Official WanGP Python API; standalone runtime. No Gradio page is needed.'}
 
     def close(self, timeout=30):
         with self.wake:

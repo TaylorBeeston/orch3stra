@@ -174,16 +174,16 @@ window.H3SequenceUI={create(ctx){
     }
     if(action==='download')return perform(async()=>ctx.download('sequence-'+id+'-diagnostic.json',await call({action:'diagnostics',id})),'Preparing sequence diagnostic');
     if(action==='restart-renderer'){
-      if(!confirm('Start the headless renderer again? A job that was interrupted is marked failed (never replayed), and the queue then stays paused until you resume it. Model loading can take a few minutes.'))return;
+      if(!await askConfirm('Start the headless renderer again? A job that was interrupted is marked failed (never replayed), and the queue then stays paused until you resume it. Model loading can take a few minutes.'))return;
       return perform(async()=>{const r=await P.call('renderer',{action:'restart'});toast('Renderer restarted ('+(r.runtime_state||'initializing')+'). Reconcile or resume your sequence when it is ready.');},'Restarting renderer');
     }
     if(action==='queue-resume'||action==='queue-pause'){
       const resume=action==='queue-resume';
-      if(!confirm(resume?'Unpause WanGP? Already queued native jobs may start. Parked managed sequences will NOT resume.':'Pause WanGP dispatch after the current native job? This affects the whole renderer, not just one film.'))return;
+      if(!await askConfirm(resume?'Unpause WanGP? Already queued native jobs may start. Parked managed sequences will NOT resume.':'Pause WanGP dispatch after the current native job? This affects the whole renderer, not just one film.'))return;
       return perform(()=>P.wangp('/queue/'+(resume?'resume':'pause'),'POST',{}),resume?'Unpausing renderer queue':'Pausing renderer queue');
     }
-    if(action==='cancel'&&!confirm('Cancel this sequence and cooperatively stop its current native job? No later window will submit. Finished videos are kept.'))return;
-    if(action==='resume'&&!confirm('Resume this sequence? Director will reconcile any accepted job, then may submit the remaining windows.'+(data?.runs?.find(r=>r.id===id)?.layout==='legacy-cumulative'?'\nThis legacy run retains episode-long context and its increasing memory/storage cost. Use a new selected-window suffix for bounded continuation.':'')))return;
+    if(action==='cancel'&&!await askConfirm('Cancel this sequence and cooperatively stop its current native job? No later window will submit. Finished videos are kept.'))return;
+    if(action==='resume'&&!await askConfirm('Resume this sequence? Director will reconcile any accepted job, then may submit the remaining windows.'+(data?.runs?.find(r=>r.id===id)?.layout==='legacy-cumulative'?'\nThis legacy run retains episode-long context and its increasing memory/storage cost. Use a new selected-window suffix for bounded continuation.':'')))return;
     return perform(async()=>{
       const r=await call({action:action==='attach'?'get':action,id});
       if(r.snapshot?.id===ctx.project().id)ctx.addJob(r);

@@ -10,7 +10,7 @@ with sync_playwright() as pw:
  page=browser.new_page(viewport={'width':1600,'height':1050});page.set_default_timeout(8000)
  errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('dialog',lambda d:d.accept())
  html=re.sub(r'<script[^>]*src=[^>]*></script>','',(ROOT/'index.html').read_text());html=re.sub(r'<link[^>]*href="styles.css"[^>]*>','',html)
- page.set_content(html);page.add_style_tag(content=(ROOT/'styles.css').read_text())
+ page.set_content(html);page.evaluate("window.H3_NATIVE_CONFIRM=true");page.add_style_tag(content=(ROOT/'styles.css').read_text())
  page.evaluate("""()=>{const data=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,String(v)),removeItem:k=>data.delete(k)}})}""")
  for f in ['core.js', 'storage.js', 'providers.js', 'speech-core.js', 'speech-ui.js', 'takes-ui.js', 'direction-ui.js', 'soundscape-ui.js', 'reference-core.js', 'clinic-core.js', 'film-core.js', 'clinic-ui.js', 'film-ui.js', 'voice-studio.js', 'codex-ui.js', 'scene-core.js', 'doctor-core.js', 'reference-agent-core.js', 'scene-ui.js']:
   page.add_script_tag(content=(ROOT/f).read_text())

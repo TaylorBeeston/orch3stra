@@ -119,7 +119,7 @@ export class SequenceCoordinator {
       const q=await this.api({backendMode:this.backendMode},'/queue');
       if(!Array.isArray(q.jobs)||typeof q.paused!=='boolean')throw Error('Malformed renderer queue; refusing to infer idle.');
       return{supported:true,reachable:true,checkedAt:new Date().toISOString(),paused:q.paused,active_job_id:q.active_job_id||null,
-        jobs:q.jobs.map(j=>({job_id:j.job_id,status:j.status,project_name:j.project_name,progress:j.progress,message:j.message})),
+        jobs:q.jobs.map(j=>({job_id:j.job_id,status:j.status,operation:j.operation,project_name:j.project_name,progress:j.progress,message:j.message})),
         idle:!q.active_job_id&&!q.jobs.some(j=>!nativeTerminal.has(j.status))};
     }catch(e){const d=await this.backend?.diagnose?.().catch(()=>null);return{supported:true,reachable:false,checkedAt:new Date().toISOString(),error:d?.exited?d.message:e.message,restartable:d?.exited===true,idle:false};}
   }

@@ -257,6 +257,7 @@ def build_http(engine, token, port):
                 if u.path == '/import-render': return self.reply(200, engine.import_render(b))
                 if u.path == '/queue/pause': return self.reply(200, engine.set_paused(True))
                 if u.path == '/queue/resume': return self.reply(200, engine.set_paused(False))
+                if u.path == '/release-memory': return self.reply(200, engine.request_release())
                 if len(parts) == 3 and parts[0] == 'jobs' and parts[2] == 'cancel':
                     return self.reply(200, engine.cancel(parts[1]))
                 if u.path == '/shutdown':

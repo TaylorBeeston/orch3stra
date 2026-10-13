@@ -14,7 +14,7 @@ with sync_playwright() as pw:
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.on('dialog', lambda d: d.dismiss())
     html = (ROOT / 'index.html').read_text()
-    page.set_content(re.sub(r'<script[^>]*src=[^>]*></script>|<link[^>]*href="[^"]+\.css"[^>]*>', '', html))
+    page.set_content(re.sub(r'<script[^>]*src=[^>]*></script>|<link[^>]*href="[^"]+\.css"[^>]*>', '', html));page.evaluate("window.H3_NATIVE_CONFIRM=true")
     for f in re.findall(r'<link[^>]*href="([^"]+\.css)"', html):
         page.add_style_tag(content=(ROOT / f).read_text())
     page.evaluate("""()=>{const m=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}})}""")

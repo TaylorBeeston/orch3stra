@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory() as td:
  with sync_playwright() as pw:
   browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_BIN','/usr/bin/chromium'),headless=True,args=['--no-sandbox'])
   page=browser.new_page(viewport={'width':1500,'height':1120});page.set_default_timeout(25000);errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('dialog',lambda d:d.accept())
-  html=re.sub(r'<script[^>]*src=[^>]*></script>','',(ROOT/'index.html').read_text());html=re.sub(r'<link[^>]*href="[^"]+.css"[^>]*>','',html);page.route('http://post-fixture.test/**',lambda route:route.fulfill(status=200,content_type='text/html',body=html));page.goto('http://post-fixture.test/')
+  html=re.sub(r'<script[^>]*src=[^>]*></script>','',(ROOT/'index.html').read_text());html=re.sub(r'<link[^>]*href="[^"]+.css"[^>]*>','',html);page.route('http://post-fixture.test/**',lambda route:route.fulfill(status=200,content_type='text/html',body=html));page.goto('http://post-fixture.test/');page.evaluate("window.H3_NATIVE_CONFIRM=true")
   for f in re.findall(r'<link[^>]*href="([^"]+.css)"',(ROOT/'index.html').read_text()):page.add_style_tag(content=(ROOT/f).read_text())
   page.evaluate("""()=>{const m=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}})}""")
   for f in re.findall(r'<script\b[^>]*src="([^"]+)"',(ROOT/'index.html').read_text()):

@@ -22,4 +22,13 @@ with sync_playwright() as pw:
  print('PASS overlapping intent refused, double acceptance dispatches once, 390×460 layout, no native dialogs')
  page.locator('#launch').click();page.evaluate('document.querySelector("#app-confirm").close()');page.wait_for_function('!H3Confirm.pending');assert page.evaluate('fx.dispatches')==1
  print('PASS programmatic Close cancels the pending approval')
+ # askConfirm (core.js) replaces window.confirm across the app with this dialog, never the native one.
+ page.add_script_tag(content=(ROOT/'core.js').read_text())
+ page.evaluate(r'''()=>{window.fx.asks=[];window.ask=async m=>fx.asks.push(await askConfirm(m));}''')
+ page.evaluate('void ask("Delete <b>this</b> take?")');page.locator('#app-confirm').wait_for(state='visible')
+ assert page.locator('#app-confirm-summary').inner_text()=='Delete <b>this</b> take?';assert 'unchanged' in page.locator('#app-confirm-note').inner_text()
+ page.locator('[data-app-confirm=accept]').click();page.wait_for_function('fx.asks.length===1')
+ page.evaluate('void ask("Second?")');page.locator('#app-confirm').wait_for(state='visible');page.keyboard.press('Escape');page.wait_for_function('fx.asks.length===2')
+ assert page.evaluate('fx.asks')==[True,False];assert page.evaluate('fx.native')==0
+ print('PASS askConfirm uses the app dialog (accept true, Escape false) and never window.confirm')
  browser.close()

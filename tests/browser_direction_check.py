@@ -9,7 +9,7 @@ with sync_playwright() as pw:
  browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_BIN','/usr/bin/chromium'),headless=True,args=['--no-sandbox','--autoplay-policy=no-user-gesture-required'])
  page=browser.new_page(viewport={'width':1600,'height':1000});page.set_default_timeout(8000)
  errors=[];page.on('pageerror',lambda e:errors.append(str(e)));page.on('dialog',lambda d:d.accept())
- page.route('http://127.0.0.1:19872/**',lambda route:route.fulfill(status=200,body='<html></html>',content_type='text/html'));page.goto('http://127.0.0.1:19872/')
+ page.route('http://127.0.0.1:19872/**',lambda route:route.fulfill(status=200,body='<html></html>',content_type='text/html'));page.goto('http://127.0.0.1:19872/');page.evaluate("window.H3_NATIVE_CONFIRM=true")
  html=re.sub(r'<script[^>]*src=[^>]*></script>','',(ROOT/'index.html').read_text());html=re.sub(r'<link[^>]*href="styles.css"[^>]*>','',html)
  page.set_content(html);page.add_style_tag(content=(ROOT/'styles.css').read_text())
  page.evaluate("""()=>{const data=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,String(v)),removeItem:k=>data.delete(k)}})}""")

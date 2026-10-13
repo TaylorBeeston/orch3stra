@@ -10,3 +10,4 @@ node_modules/
 
 python-overlays/
 *.h3project
+tests/speech-quality-mobile-fixture.png

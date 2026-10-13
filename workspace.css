@@ -65,3 +65,5 @@
 @media(max-width:760px){.workspace-window-settings{grid-template-columns:minmax(0,1fr);gap:12px}.workspace-window-settings .inspector-block{padding:16px}}
 
 body.post-open>.workspace-navigation{display:none}
+/* The workspace header already has Back + breadcrumb; hide panels' own "← Film desk" to avoid two back buttons. */
+.usability-shell #dialog-body .film-back{display:none}

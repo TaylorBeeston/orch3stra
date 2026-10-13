@@ -31,7 +31,7 @@ window.H3SoundscapeUI = {create(ctx) {
     const project=ctx.project(),scope=$('#soundscape-scope').value;
     const selected=scope==='missing'?project.windows.filter(unfinished):scope==='selected'?[ctx.current()].filter(Boolean):project.windows.slice();
     if(!selected.length)throw Error('No windows in this selection need soundscapes.');
-    if(!confirm(`Ask ${P.config.provider} / ${P.config.model} to draft ${selected.length} soundscapes in ${Math.ceil(selected.length/3)} text-only request(s)? You will review the results before applying. Provider usage limits/charges apply.`))return;
+    if(!await askConfirm(`Ask ${P.config.provider} / ${P.config.model} to draft ${selected.length} soundscapes in ${Math.ceil(selected.length/3)} text-only request(s)? You will review the results before applying. Provider usage limits/charges apply.`))return;
     const snapshot=H3.clone(project),ids=selected.map(w=>w.id),variant={
       id:H3.uid(),kind:'soundscape',model:P.config.provider+' / '+P.config.model,createdAt:new Date().toISOString(),
       baseRevision:project.revision,status:'drafting',proposal:{windows:[]},raw:'',
@@ -101,7 +101,7 @@ window.H3SoundscapeUI = {create(ctx) {
       else if(action==='apply')apply(el.dataset.variantId);
       else if(action==='scripted-missing'){
         const windows=ctx.project().windows.filter(unfinished);if(!windows.length)throw Error('No unfinished soundscapes.');
-        if(!confirm(`Set ${windows.length} unfinished soundscapes to keep only the sounds already scripted, without adding an ambient bed? Existing custom soundscapes and all other fields remain unchanged.`))return;
+        if(!await askConfirm(`Set ${windows.length} unfinished soundscapes to keep only the sounds already scripted, without adding an ambient bed? Existing custom soundscapes and all other fields remain unchanged.`))return;
         mutate(()=>{for(const w of windows)w.soundscape=H3.SCRIPTED_SOUNDS_ONLY;});closeDialog();toast('Unfinished soundscapes now explicitly keep only scripted sounds.');
       }
     }catch(err){toast(err.message||String(err),true);}

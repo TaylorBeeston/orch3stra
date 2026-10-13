@@ -1,5 +1,11 @@
 /* Orch3stra — dependency-free planning/compiler core. Upstream sources: see the in-app Field guide.
    Authored 2026-09-11; no MiniMax model weights or upstream implementation bundled. */
+// App-styled replacement for window.confirm(). Resolves true/false. Tests that drive the
+// browser's own dialog set window.H3_NATIVE_CONFIRM=true to keep their dialog handlers.
+if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (summary, {title = 'Please confirm', accept = 'Continue'} = {}) =>
+  window.H3Confirm && window.H3_NATIVE_CONFIRM !== true
+    ? window.H3Confirm.ask({title, summary: String(summary), accept, note: 'Cancel leaves everything unchanged.'})
+    : Promise.resolve(window.confirm(summary));
 (function (root, factory) {
   const api = factory();
   if (typeof module === 'object' && module.exports) module.exports = api;
@@ -206,7 +212,8 @@
       const hidden=known.filter(s=>!castFor(w,s.id).visibleShots.includes(n));
       if(hidden.length)directives.push(`${hidden.map(tag).join('; ')} ${hidden.length===1?'is':'are'} not shown on screen in this shot.`);
       const silent=visible.filter(s=>(s.speakerId||s.voiceAssetId)&&!castFor(w,s.id).voiceShots.includes(n));
-      if(silent.length)directives.push(`${silent.map(tag).join('; ')} ${silent.length===1?'remains':'remain'} silent; lips stay closed during other speakers' lines.`);
+      // Only mention other speakers' lines when someone actually speaks in this shot.
+      if(silent.length&&voices.length)directives.push(`${silent.map(tag).join('; ')} ${silent.length===1?'remains':'remain'} silent; lips stay closed during other speakers' lines.`);
       for(const speaker of voices) {
         const c=castFor(w,speaker.id),voice=refs.find(a=>a.id===speaker.voiceAssetId);
         if(c.delivery==='scene')continue;
@@ -218,7 +225,10 @@
         if(c.delivery==='phone')body=body.replace(new RegExp('behind the phone\\s+(?=<Subject '+speaker.number+'>)','gi'),'through the telephone earpiece, ');
         body=body.replace(pattern,(_all,dialogue)=>`${subject}${sid} ${c.delivery==='voiceover'?'says in an off-screen voiceover':`speaks ${routeDescription(c.delivery)} and says`}, ${dialogue} The voice belongs to ${flat(speaker.name)}${c.visibleShots.includes(n)?'; their visible lips remain completely closed during this line':', who remains outside the image'}.${silent.length?' '+silent.map(tag).join('; ')+' listens without speaking or mouthing this line.':''}`);
       }
-      return header+' '+directives.join(' ')+(directives.length?' ':'')+body.trim()+'\n';
+      // "[Shot 2] At 00:03.500, cut to…" must not become "At 00:03.500, Visible referenced subjects… cut to…".
+      let lead=header,text=body.trim();
+      if(directives.length&&/\bAt \d/.test(header)){lead=header.replace(/[,.]?$/,'.');text=text.replace(/^[a-z]/,c=>c.toUpperCase());}
+      return lead+' '+directives.join(' ')+(directives.length?' ':'')+text+'\n';
     }).trim();
   }
   // A recorded role restriction is valid only for the same images/casting/requirements.
@@ -237,7 +247,7 @@
       const c=castFor(w,s.id);
       if(c.reviewed&&!c.visibleShots.length)return c.voiceShots.length?[`<Subject ${s.number}> (${flat(s.name)}) is the recurring character heard ${routeDescription(c.delivery)} in ${shotList(c.voiceShots)}. This character has no visible appearance in this window.`]:[];
       const sources=(c.sourceAssetIds??s.assetIds??[]).map(id=>byId.get(id)).filter(a=>a&&a.kind!=='audio');
-      return [`<Subject ${s.number}> (${flat(s.name)}) is ${tx(flat(c.appearance||s.description))}${sources.length?' Reference sources: '+sources.map(a=>a.token+' ('+tx(flat(a.role||a.description||a.kind+' reference'))+')').join('; ')+'.':' This subject is text-defined; no visual reference file is attached.'}`];
+      return [`<Subject ${s.number}> (${flat(s.name)}) is ${tx(flat(c.appearance||s.description)).replace(/^(The|A|An) /,w=>w.toLowerCase())}${sources.length?' Reference sources: '+sources.map(a=>a.token+' ('+tx(flat(a.role||a.description||a.kind+' reference'))+')').join('; ')+'.':' This subject is text-defined; no visual reference file is attached.'}`];
     });
     if(w.referenceManifest?.usageGuard===referenceUsageStamp(p,w))for(const use of w.referenceManifest.selected||[]){
       const a=byId.get(use.id);if(!a||a.kind!=='image')continue;
@@ -256,7 +266,8 @@
     if(w.definitions)definition.push(tx(w.definitions));
     const retention=subjects.flatMap(s=>{
       const c=castFor(w,s.id);if(c.reviewed&&!c.visibleShots.length)return [];
-      return [`<Subject ${s.number}>${c.reviewed?' (appears in '+shotList(c.visibleShots)+')':''}: ${s.retention||'fully_preserved'} — ${tx(flat(c.retention||c.appearance||s.description))}`];
+      const mode=s.retention||'fully_preserved',kept=tx(flat(c.retention||c.appearance||s.description)).replace(new RegExp('^'+mode+'\\s*[:—–-]\\s*','i'),'');
+      return [`<Subject ${s.number}>${c.reviewed?' (appears in '+shotList(c.visibleShots)+')':''}: ${mode} — ${kept}`];
     });
     refs.filter(a=>active.has(a.id)&&a.kind!=='image'&&!voiceIds.has(a.id)).forEach(a=>retention.push(`${a.token}: ${a.kind==='audio'?'reference':'attribute_transfer'} — ${tx(flat(a.role||a.description||'Retain only the explicitly requested properties.'))}`));
     for(const [id,ss] of bindings)retention.push(`${byId.get(id).token}: reference — ${ss.map(s=>{const c=castFor(w,s.id);return `voice timbre for <Subject ${s.number}>${c.reviewed?' in '+shotList(c.voiceShots)+'; '+routeDescription(c.delivery):''}`;}).join('; ')}; source dialogue is not copied.`);

@@ -73,6 +73,7 @@ Before moving/upgrading, clearing browser storage or changing browser profile/or
 | `H3_HOST` | `127.0.0.1` | Editor bind address |
 | `H3_PORT` | `8765` | Editor port |
 | `H3_WANGP_PORT` | `7867` | Local worker port |
+| `H3_IDLE_RELEASE_SECONDS` | `900` | Free the worker's pinned model RAM after this many idle seconds (`0` keeps it loaded) |
 | `H3_HOSTNAMES`, `H3_PUBLIC_ORIGIN` | unset | Extra allowed hosts for a deliberate network setup |
 
 Keep the default loopback bind. `H3_HOST=0.0.0.0` enables LAN access with device pairing, but traffic is unencrypted HTTP.

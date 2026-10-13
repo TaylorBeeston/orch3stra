@@ -54,7 +54,7 @@ window.H3AIUI={create(ctx){
       switch(b.dataset.aiAction){
         case'open':await open();break;
         case'refresh':await refresh();break;
-        case'cancel':if(record&&confirm('Cancel this AI request? The provider may charge for work already performed.')){await P.ai({action:'cancel',id:record.id});await refresh();}break;
+        case'cancel':if(record&&await askConfirm('Cancel this AI request? The provider may charge for work already performed.')){await P.ai({action:'cancel',id:record.id});await refresh();}break;
         case'download':if(record){const result=await P.ai({action:'get',id:record.id,detail:true});download('h3-ai-request-'+record.id+'.json',H3Studio.redact(result.job));toast('AI request log downloaded. Review private prompts before sharing.');}break;
         case'recover':if(record){try{ctx.recoverPacing(record);await P.ai({action:'validation',id:record.id,status:'valid',message:'Recovered pacing validated.'});}catch(err){await P.ai({action:'validation',id:record.id,status:'invalid',message:err.message});throw err;}}break;
       }

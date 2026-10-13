@@ -9,7 +9,7 @@ with sync_playwright() as pw:
  def boot(saved=None,viewport={'width':1280,'height':900}):
   page=browser.new_page(viewport=viewport);page.set_default_timeout(10000);page.on('request',lambda r:requests.append(r.url));page.on('pageerror',lambda e:errors.append(str(e)));page.on('dialog',lambda d:d.accept())
   page.route('**/*',lambda route:route.abort())
-  html=(ROOT/'index.html').read_text();page.set_content(re.sub(r'<(?:script[^>]*src=[^>]*></script|link[^>]*href="[^"]+\.css"[^>]*>)>','',html))
+  html=(ROOT/'index.html').read_text();page.set_content(re.sub(r'<(?:script[^>]*src=[^>]*></script|link[^>]*href="[^"]+\.css"[^>]*>)>','',html));page.evaluate("window.H3_NATIVE_CONFIRM=true")
   for f in re.findall(r'<link[^>]*href="([^"]+\.css)"',html):page.add_style_tag(content=(ROOT/f).read_text())
   page.evaluate("""()=>{const m=new Map(),s=new Map();Object.defineProperty(window,'localStorage',{value:{getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,String(v)),removeItem:k=>m.delete(k)}});Object.defineProperty(window,'sessionStorage',{value:{getItem:k=>s.get(k)||null,setItem:(k,v)=>s.set(k,String(v)),removeItem:k=>s.delete(k)}})}""")
   for f in re.findall(r'<script\b[^>]*src="([^"]+)"',html):
