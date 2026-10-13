@@ -18,9 +18,11 @@ Nemotron support, so Nemotron's Transformers lives in a separate overlay (see be
 See ENVIRONMENT.md. The helper runs under the shared interpreter (normally WanGP's own
 .venv) and puts a dependency-only overlay (`$H3_DATA_DIR/python-overlays/nemotron`, or
 `H3_NEMOTRON_PACKAGES`) in front of it, so only the Nemotron subprocess sees the newer
-Transformers. `node scripts/setup-tools.mjs --nemotron` is currently disabled: it used to
-install Transformers from the unpinned `main` branch, and stays off until it pins a specific
-release. It makes no package changes. An existing overlay keeps working.
+Transformers. `node scripts/setup-tools.mjs --nemotron` installs the pinned versions in
+`requirements-nemotron.txt` (transformers 5.19.0, tokenizers 0.23.3, huggingface_hub
+1.33.0) into a staging folder, checks that `nemotron3_diarization` is registered, then
+swaps it into place, keeping any previous overlay as `nemotron.backup-<timestamp>`.
+Run it between renders. It does not download model weights or touch WanGP's packages.
 Old explicit H3_DIARIZE_PYTHON paths remain compatible when H3_PYTHON is not set.
 
 Transcription and speaker grouping both run on the **CPU**. Node starts the voice worker

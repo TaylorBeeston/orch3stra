@@ -1,8 +1,7 @@
-# Research dependency inventory, not an installation recipe.
-# Nemotron setup is disabled until setup-tools pins a Transformers release (>=5.18.0 has native support).
-# Do not install this inventory into WanGP or an existing environment.
-torch>=2.5
-numpy>=1.26
-soundfile>=0.12
-librosa>=0.10
-# transformers: revision unresolved; installation intentionally omitted.
+# Nemotron-3-Diarization dependency overlay, installed by `node scripts/setup-tools.mjs --nemotron`.
+# Installed with pip --target into $H3_DATA_DIR/python-overlays/nemotron (or H3_NEMOTRON_PACKAGES),
+# constrained to the shared interpreter's existing torch/numpy. Do not install into WanGP's environment.
+# 5.19.0 has native Nemotron3Diarization (#49056) and the streaming last-frame fix (#49167).
+transformers==5.19.0
+tokenizers==0.23.3
+huggingface_hub==1.33.0

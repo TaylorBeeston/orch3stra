@@ -19,7 +19,7 @@ Readable installed preset metadata uses `resolve/main` URLs and does not establi
 
 ## Software dependencies and copied material
 
-Node built-ins run the editor without npm packages. Python runtime dependencies belong to the separately installed WanGP environment; optional tool inventories are in requirements-tools.txt, requirements-voice.txt and requirements-nemotron.txt. Developer fixtures require Playwright/Chromium, NumPy/Pillow, optional Gradio and FFmpeg. Their licenses/build options are independent; this package does not redistribute their binaries. FFmpeg codec/build licensing must be reviewed for any binary distribution.
+Node built-ins run the editor without npm packages. Python runtime dependencies belong to the separately installed WanGP environment; optional tool inventories and pins are in requirements-tools.txt, requirements-voice.txt and requirements-nemotron.txt. Developer fixtures require Playwright/Chromium, NumPy/Pillow, optional Gradio and FFmpeg. Their licenses/build options are independent; this package does not redistribute their binaries. FFmpeg codec/build licensing must be reviewed for any binary distribution.
 
 The upstream-context mux patch and its copied WanGP helper fixture/test are excluded from this public-candidate payload pending attribution and license review. They are preserved privately with the exact upstream source revision. Stock runtime compatibility is capability-checked; absence of that optional patch must not be advertised as exact-mux verification. The legacy adapter contains integration source: ownership and any upstream-derived snippets still need maintainer review before assigning the code license.
 
