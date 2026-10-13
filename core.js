@@ -1,4 +1,4 @@
-/* Orch3stra — dependency-free planning/compiler core. Research: RESEARCH.md.
+/* Orch3stra — dependency-free planning/compiler core. Upstream sources: see the in-app Field guide.
    Authored 2026-09-11; no MiniMax model weights or upstream implementation bundled. */
 (function (root, factory) {
   const api = factory();

@@ -188,7 +188,7 @@ The detached renderer itself still owns accepted work when Node is stopped. A Py
 crash does not have a diffusion-checkpoint resume here. These changes do not add full
 collaborative editing, automatic retransmission, or automatic media cleanup.
 
-The full local suite uses simulated SDK/model responses. See VALIDATION-1.2.2.md; no live
+The full local suite uses simulated SDK/model responses. No live
 H3/GPU render was performed for this patch.
 
 ## Retired checkpoint schema (1.2.3)
@@ -228,5 +228,5 @@ actual playback boundaries and shifts later prefix starts before proceeding. It 
 not modify footage or silence and does not ignore large/corrupt/wrong-rate outputs.
 Exact verification still applies to a known archived prefix before it is reused.
 
-See PROGRESS.md for the full workflow, including recovery from the reported 760/763-frame
-case and limits when the native file was deleted or belongs to another backend.
+See docs/USAGE.md (Small frame-count differences) for the full workflow, including recovery
+from the 760/763-frame case and limits when the native file was deleted or belongs to another backend.

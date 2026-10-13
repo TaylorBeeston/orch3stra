@@ -1,52 +1,117 @@
-# Orch3stra 2.3.0 release candidate
+# Orch3stra
 
-Orch3stra is a browser editor for planning, reference selection, local WanGP video rendering, and non-destructive finishing. Former names were Shotweft and H3 Director; existing `H3_*` settings and project data remain compatible.
+Orch3stra is a self-hosted AI filmmaking studio that runs in your browser. You describe a story, pick or build reference images and voices for your cast, and Orch3stra plans the film as short generated windows, renders them through a local, headless [WanGP](https://github.com/deepbeepmeep/Wan2GP) worker on your own GPU, and lets you trim, score and export the result as an MP4. Optional voice tools can transcribe source audio and group anonymous speakers locally (pyannote, or NVIDIA Nemotron-3-Diarization) to build voice references; these run on the CPU, not the GPU. Nothing is sent to a cloud renderer; an AI planner is optional and only used if you configure one.
 
-This is a published source-only release candidate. The owner selected MIT for original app-owned source; see LICENSE. The canonical repository is [TaylorBeeston/orch3stra](https://github.com/TaylorBeeston/orch3stra). Third-party materials and separately installed models retain their own terms. See [release gates](RELEASE-GATES.md) and [third-party terms](THIRD_PARTY_NOTICES.md).
+Orch3stra was previously called Shotweft and H3 Director. That is why settings use `H3_*` names and data lives in `~/.local/share/h3-director`. Released under the [MIT license](LICENSE); third-party materials and separately installed models keep their own terms ([notices](THIRD_PARTY_NOTICES.md)).
 
-## First film
+## Showcase
 
-1. Review hardware fit and licenses before generation. A working, separately installed WanGP is required for rendering. This package contains no models, WanGP checkout, Python environment, or media. Model size, resolution, reference count, and duration determine memory needs; preflight cannot guarantee that a model fits.
-2. On Linux, use Node 22 or newer and FFmpeg/FFprobe with H.264/AAC support. No npm installation is required. Node 20.20.2 passed local candidate checks, but Node 22+ is the documented target; a clean-machine or cross-platform installation has not been verified.
-3. Extract into a new folder alongside WanGP. Run `node start-headless.mjs --setup` to select the existing WanGP folder and its Python executable. This saves nonsecret paths; it installs nothing. Then run `node start-headless.mjs --check`. Exit 1 means required structural checks failed. Exit 2 means paths/codecs passed but WanGP runtime readiness is unverified; a placeholder SDK also receives exit 2. No runtime or model is initialized by this check. Review the selected WanGP environment and its installation instructions before deliberately starting; `--status` can inspect an already running worker.
-4. Start with `node start-headless.mjs`. Open `http://127.0.0.1:8765/`. The default bind is loopback. Describe an original brief, open Story → Story + cast, and review the proposal before applying it. A planner is optional; configure one deliberately in Settings.
-5. Add owned/licensed references and review each window's visible/heard cast and actual input slots. Begin with one short window, review its render plan, and submit only when ready. Rendering and provider calls are explicit actions and may load installed models or incur provider charges.
-6. Review saved footage, trim in Post, and export the final MP4. Also make a portable project backup containing source media. A movie export and a project backup serve different purposes.
+_Coming soon: example films and screenshots._
 
-## Timing
+## Requirements
 
-Settings defaults to a preferred 15-second generated window. Exceptional windows up to 30 seconds require explicit opt-in, an editable continuity reason and a resource-risk acknowledgement. Generated span includes retained footage plus overlap. H3 uses 24 fps and a `17k+5` frame grid; nominal 15/30-second ceilings are 362/736 frames. The selected model ceiling still limits the planner. Image and audio limits are separate.
+| | |
+| --- | --- |
+| OS | Linux. macOS and Windows are untested. |
+| GPU / VRAM | Whatever your chosen model needs in WanGP: Orch3stra adds no GPU requirement of its own, so follow [WanGP's upstream requirements](https://github.com/deepbeepmeep/Wan2GP). Memory use grows with resolution, number of references and window length, so start small (see [Timing](#configuration-basics)). |
+| WanGP | An existing, working WanGP install with its own Python environment. Orch3stra does not bundle WanGP, models, or a Python environment, and never downloads models during startup. |
+| Python | The WanGP environment's interpreter, Python 3.10 or newer. |
+| Node.js | Node 22 or newer. No `npm install` step is needed. |
+| FFmpeg | `ffmpeg` and `ffprobe` with H.264/AAC support on `PATH`, or set `FFMPEG_BIN` / `FFPROBE_BIN`. |
 
-An owner-reported 30-second experiment with a pruned 20B model, 20 steps, nine image references and two audio references took about an hour and exhausted available RAM/swap/VRAM. Resolution and FPS were not reported. This is an anecdote, not a capacity or timing guarantee. Existing projects retain their timing unless deliberately edited.
+## Quick start
 
-## Effective configuration and lifecycle
+```sh
+git clone https://github.com/TaylorBeeston/orch3stra.git
+cd orch3stra
 
-`H3_DATA_DIR` defaults to `~/.local/share/h3-director` and contains private mutable data. `H3_WANGP_ROOT`, `H3_PYTHON`/`H3_WANGP_PYTHON` override saved runtime paths. `H3_HOST` defaults to `127.0.0.1`; `H3_PORT` defaults to 8765. Use explicit `H3_HOSTNAMES` and `H3_PUBLIC_ORIGIN` only for a reviewed network deployment. LAN HTTP is unencrypted; pairing does not provide transport encryption. Keep the worker on loopback.
+# 1. Point Orch3stra at your WanGP folder and its Python (e.g. /path/to/Wan2GP/.venv/bin/python).
+#    Review the paths and type SAVE. Only these non-secret paths are saved; nothing is installed.
+node start-headless.mjs --setup
 
-The launcher starts or reuses a detached worker. Closing a browser tab leaves the Node service and coordinator running. Pressing Ctrl-C in the foreground launcher stops Node; an accepted native job continues in the detached worker. `node start-headless.mjs --status` inspects status. `--stop` explicitly stops an idle worker and refuses an active render. Managed sequences pause their coordinator dispatch when Node stops; reconcile or explicitly resume them after restart. Never blindly resubmit an uncertain job.
+# 2. Check paths, Python version, FFmpeg/FFprobe and the data folder. No models are loaded.
+node start-headless.mjs --check
 
-Optional speech/media tools are separate from basic editing. [Environment details](ENVIRONMENT.md) explain protected dependency constraints. Nemotron installation is blocked pending a verified pinned Transformers revision; this candidate does not install an unpinned branch.
+# 3. Start (or reuse) the WanGP worker and the editor.
+node start-headless.mjs
+```
 
-## Preserve and recover
+Then open <http://127.0.0.1:8765/>.
 
-See [migration and rollback](MIGRATION-2.3.0.md). Portable project backups preserve editor project/source-media data, but do not replace full worker/database/checkpoint/output backups or browser-origin storage. Never copy only project JSON and assume historical footage will follow. Fresh-path worker copies may retain every media byte while old outputs remain unavailable; use the migration guide's verified, explicitly confirmed reimport procedure. Reimport creates new owned job/output IDs and does not restore model checkpoints or original continuation provenance.
+`--check` exits **1** if a required check failed and **2** if the structural checks passed, but it can't tell whether WanGP will actually load a model. Exit 2 is the normal "good to go" result. [FIRST-RUN.md](FIRST-RUN.md) explains each message.
 
-## Verify the source archive
+If you only want to edit, without starting a renderer, run `node bridge.mjs` instead.
 
-From the extracted root run `sha256sum -c MANIFEST.sha256` and `sha256sum -c SHA256SUMS`. Both lists are generated from the same payload, including MANIFEST.json; checksum lists exclude themselves. Run `node scripts/check-all.mjs`. Optional browser fixtures require an already installed Playwright interpreter and Chromium selected with `PYTHON_BIN` and `CHROMIUM_BIN`; run `node scripts/check-all.mjs --integration`. Fixtures use synthetic projects and fake SDK/providers, never live model inference.
+## Making your first video
 
-See [validation](VALIDATION-2.3.0.md), [contributing](CONTRIBUTING.md), and [security](SECURITY.md). Linux local fixture results are evidence for the tested paths only. macOS, Windows, real phones, clean installation, and new live-model generation remain release gates.
+1. In the editor, write a short original brief, open **Story → Story + cast**, and review the proposal before applying it.
+2. Add reference images (and, optionally, voices) that you own or are licensed to use. For each window, check which cast members appear and are heard.
+3. Start with **one short window**. Review its render plan, then submit it. Rendering is always an explicit action and loads your installed model.
+4. Watch progress in **Render overview**. When footage is ready, trim and mix it in **Post** and export it.
+5. Also make a **portable project backup**. A movie export and a project backup are different things; see [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md).
 
-Render-intent storage permits one bridge writer per data directory. A second writer is refused before ledger restart recovery. Normal close/exit releases its lock; a forced-crash lock fails closed. Preserve the ledger and lock, verify the previous bridge is stopped, and inspect exact request ownership before any manual stale-lock removal. Never delete an intent ledger or replay uncertain requests to get past a lock. This protects cooperating versions; an older bridge without locking must not run against the same data directory. External file changes fence subsequent cached writes and require inspection.
+## Where outputs go
 
-[Writer-lock diagnosis and recovery](docs/INTENT-LOCK-RECOVERY.md) covers read-only checks and separately authorized stale-lock recovery. The hash guard is a pre-write consistency fence, not atomic compare-and-swap against older/noncooperating writers.
+- **Finished movies:** in Post, use **Download Post MP4**, or **Save movie & sidecars to Videos** to write the export into `~/Videos`.
+- **Browser projects and reference media:** saved in this browser’s IndexedDB, separately for each browser profile and site origin. Unsynced projects/media can exist only there.
+- **Published server copies and server settings:** `H3_DATA_DIR`, default `~/.local/share/h3-director`. **Publish / save current project** is opt-in; this directory does not automatically contain all browser projects or their latest edits.
+- **Worker renders:** `H3_HEADLESS_DATA_DIR`, default `$H3_DATA_DIR/headless`, which holds `uploads/`, `outputs/`, `previews/` and `continuations/` plus the job database.
 
-The default headless launcher acquires the same writer ownership before worker startup/reuse. A refused additional launcher does not reach worker health/bootstrap or runtime recovery. Read-only status and explicit setup/check/stop commands retain their separate scopes.
+Before moving/upgrading, clearing browser storage or changing browser profile/origin, export a **portable project backup for every unsynced project**, including its needed reference media. Portable backups do not embed worker-owned rendered videos: back up those files and the server data directory separately. Treat these folders and exports as private; see [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md) and [docs/UPGRADING.md](docs/UPGRADING.md).
 
-SIGINT/SIGTERM waits for the full manager/write shutdown barrier. If that cannot finish within four seconds, Node is forcibly terminated and the writer crash lock is preserved for inspection; this is not a confirmed graceful stop. See the recovery runbook before restarting.
+## Configuration basics
 
-## Contributor checks
+`node start-headless.mjs --setup` saves the WanGP root and Python path. These environment variables override settings:
 
-[CPU-only CI](docs/CI.md) checks deterministic fixtures and source packaging on pull requests. It does not run WanGP, models, ASR, GPU generation or deployment.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `H3_WANGP_ROOT` | saved by `--setup` | WanGP folder |
+| `H3_PYTHON` / `H3_WANGP_PYTHON` | saved by `--setup` | WanGP Python interpreter |
+| `H3_DATA_DIR` | `~/.local/share/h3-director` | Private project data |
+| `H3_HEADLESS_DATA_DIR` | `$H3_DATA_DIR/headless` | Worker jobs and renders |
+| `H3_HOST` | `127.0.0.1` | Editor bind address |
+| `H3_PORT` | `8765` | Editor port |
+| `H3_WANGP_PORT` | `7867` | Local worker port |
+| `H3_HOSTNAMES`, `H3_PUBLIC_ORIGIN` | unset | Extra allowed hosts for a deliberate network setup |
 
-Use one Git checkout for development and launch; see [canonical source and cutover](docs/CANONICAL-SOURCE.md). Existing project storage keeps its legacy `h3-director` name.
+Keep the default loopback bind. `H3_HOST=0.0.0.0` enables LAN access with device pairing, but traffic is unencrypted HTTP.
+
+**Timing.** By default each generated window aims for 15 seconds (24 fps). Windows of up to 30 seconds need an explicit opt-in in Settings. Longer windows use much more RAM and VRAM, and your model's limit still applies. See [TIMING-ADVISOR.md](TIMING-ADVISOR.md).
+
+**AI planner.** Optional. Configure it in Settings, or sign in with a Codex subscription ([docs/USAGE.md](docs/USAGE.md#codex-subscription-sign-in)). Provider calls may cost money.
+
+**Optional voice tools.** Check what's installed with `node scripts/setup-tools.mjs --check`. `--install-tools` installs extra packages into the selected environment, so back that environment up first. Transcription (faster-whisper) and speaker grouping (pyannote or Nemotron) run on the CPU: the voice worker is started with no visible GPU, so they don't compete with renders for VRAM, but long sources take a while. `--nemotron` installs Nemotron's pinned Transformers into a separate overlay that only the speaker-grouping helper uses, so WanGP's own packages are untouched. See [ENVIRONMENT.md](ENVIRONMENT.md) and [DIARIZATION.md](DIARIZATION.md).
+
+**Lifecycle.** `node start-headless.mjs --status` shows the worker. `--stop` stops an idle worker and refuses to stop one that's rendering. Closing the browser tab doesn't stop anything. Ctrl-C stops the editor, but an accepted render keeps going in the worker. After a restart, managed sequences stay paused until you resume them.
+
+## Troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| `--check` exits 1 | Read the failing check in its JSON output. Usually the WanGP root or Python path is wrong; rerun `--setup`. |
+| Missing `wgp.py` or `shared/api.py` | Select the WanGP root folder itself, not a subfolder. |
+| `spawn ... ENOENT` / Python not found | Fix the Python path with `--setup`. |
+| FFmpeg/FFprobe unavailable | Install them, or set `FFMPEG_BIN` / `FFPROBE_BIN`. |
+| Out of memory / very slow renders | Use a shorter window, fewer references, a lower resolution, or a smaller model. |
+| "A different renderer version is running" / different WanGP root | Wait for the current render to finish, run `node start-headless.mjs --stop`, then start again. |
+| Second editor refused (writer lock) | Only one editor can use a data directory at a time. Stop the other one. Never delete the lock or ledger blindly; see [docs/INTENT-LOCK-RECOVERY.md](docs/INTENT-LOCK-RECOVERY.md). |
+| Unsure whether a render was submitted | Check Render overview and the worker status before you resubmit. Don't blindly repeat it. |
+
+The full table is in [FIRST-RUN.md](FIRST-RUN.md). Logs can contain prompts and filenames, so keep them private.
+
+## Further reading
+
+- [docs/USAGE.md](docs/USAGE.md): usage guide
+- [FIRST-RUN.md](FIRST-RUN.md): setup and error messages
+- [HEADLESS.md](HEADLESS.md): the headless WanGP worker
+- [EDITOR.md](EDITOR.md), [POST.md](POST.md), [SEQUENCES.md](SEQUENCES.md), [REFERENCES.md](REFERENCES.md): feature guides
+- [ENVIRONMENT.md](ENVIRONMENT.md), [DIARIZATION.md](DIARIZATION.md): optional speech tools
+- [docs/UPGRADING.md](docs/UPGRADING.md), [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md): upgrades and backups
+- [WANGP-COMPATIBILITY.md](WANGP-COMPATIBILITY.md): supported WanGP versions
+- [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## Contributing
+
+Run the CPU-only checks with `node scripts/check-all.mjs` (CI runs `python scripts/check-ci.py`; see [docs/CI.md](docs/CI.md)). They use synthetic fixtures and never run models. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Use one Git checkout for both development and running the app, and update it with `git pull` while the worker is idle. Your projects live in `H3_DATA_DIR`, not in the checkout.
