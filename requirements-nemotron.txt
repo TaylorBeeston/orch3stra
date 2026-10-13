@@ -1,5 +1,5 @@
 # Research dependency inventory, not an installation recipe.
-# Nemotron setup is blocked pending a verified pinned Transformers revision.
+# Nemotron setup is disabled until setup-tools pins a Transformers release (>=5.18.0 has native support).
 # Do not install this inventory into WanGP or an existing environment.
 torch>=2.5
 numpy>=1.26

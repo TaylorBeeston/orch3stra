@@ -1,27 +1,32 @@
-# Nemotron-3-Diarization — optional subprocess integration (1.5.0)
+# Nemotron-3-Diarization — optional speaker grouping
 
-## What changed
-
-Voice workshop now offers **NVIDIA Nemotron-3-Diarization** or the existing **pyannote
+Voice workshop offers **NVIDIA Nemotron-3-Diarization** or the existing **pyannote
 Community-1** speaker grouping path. Faster-whisper remains responsible for transcription.
 NVIDIA's new model supplies anonymous time-aligned speaker groups, not words, voice
 isolation, celebrity identification or the names of game characters. Its maximum is eight
 speaker channels ordered by first arrival; it supports overlapping speech and streaming.
 
 This implementation uses the documented **native Transformers** API, not NeMo. NeMo's
-separate Python/package instructions do not apply to this path. On the release date,
-NVIDIA instructs installing Transformers from source for native support. Its current
-source declares Python >=3.10 and PyTorch >=2.5. Actual installation/model inference was
-not possible in the build environment; requirements are not a tested lockfile.
+separate Python/package instructions do not apply to this path. When the model was
+released (September 23, 2026) native support existed only in Transformers' main branch;
+it first shipped in a stable release with Transformers 5.18.0. Transformers 5.x needs
+Python >=3.10 and PyTorch >=2.5. WanGP pins an older Transformers (4.x), which has no
+Nemotron support, so Nemotron's Transformers lives in a separate overlay (see below).
 
-## Current install: one shared interpreter (1.5.0)
+## Installation
 
-See ENVIRONMENT.md. The default helper now runs under WanGP's own .venv interpreter.
-`node scripts/setup-tools.mjs --nemotron` is currently blocked pending a verified pinned Transformers revision; it makes no package changes. The existing subprocess overlay architecture is described in ENVIRONMENT.md.
-Do not follow the former separate .diarization-venv instructions for a new setup. Old
-explicit H3_DIARIZE_PYTHON paths remain compatible when H3_PYTHON is not set.
-Native grouping and transcription still run on CPU. Model downloads require explicit
-workshop consent. No live-model inference or installation is claimed by local fixture tests.
+See ENVIRONMENT.md. The helper runs under the shared interpreter (normally WanGP's own
+.venv) and puts a dependency-only overlay (`$H3_DATA_DIR/python-overlays/nemotron`, or
+`H3_NEMOTRON_PACKAGES`) in front of it, so only the Nemotron subprocess sees the newer
+Transformers. `node scripts/setup-tools.mjs --nemotron` is currently disabled: it used to
+install Transformers from the unpinned `main` branch, and stays off until it pins a specific
+release. It makes no package changes. An existing overlay keeps working.
+Old explicit H3_DIARIZE_PYTHON paths remain compatible when H3_PYTHON is not set.
+
+Transcription and speaker grouping both run on the **CPU**. Node starts the voice worker
+with `CUDA_VISIBLE_DEVICES` empty, Whisper is created with `device='cpu'`, the Nemotron
+model is moved to CPU float32, and PyTorch is limited to two threads. Model downloads
+require explicit workshop consent. Local fixture tests do not run model inference.
 
 
 ## Use it on a new source
@@ -39,14 +44,14 @@ provider is implied; pyannote still requires its own HF access conditions.
 
 **Check Nemotron environment** reports Python, installed Transformers version, PyTorch
 presence and native `nemotron3_diarization` registration. It does not load weights and
-cannot certify a successful future inference. If native support is false, update only
-this isolated environment using the source requirement and retry the check.
+cannot certify a successful future inference. If native support is false, the overlay
+needs a Transformers release with Nemotron support (5.18.0 or newer); WanGP itself must not be upgraded.
 
-A manual terminal check (no model download):
+A manual terminal check (no model download), using the same interpreter as the app:
 
 ```sh
 printf '%s' '{"action":"capabilities"}' | \
-  .diarization-venv/bin/python scripts/diarization_worker.py
+  "$H3_PYTHON" scripts/diarization_worker.py
 ```
 
 ## Regroup without losing hand edits
@@ -85,7 +90,7 @@ A Voice job is a Node-owned child process, not a detached GPU job. Keep Node run
 transcription/grouping. Model download/runtime errors appear in the workshop status and
 activity system. This does not imply that old voice operations survive a Node restart.
 
-## Sources checked September 23, 2026
+## Sources
 
 - Model card and native offline/streaming examples:
   https://huggingface.co/nvidia/Nemotron-3-Diarization

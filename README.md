@@ -1,6 +1,6 @@
 # Orch3stra
 
-Orch3stra is a self-hosted AI filmmaking studio that runs in your browser. You describe a story, pick or build reference images and voices for your cast, and Orch3stra plans the film as short generated windows, renders them through a local, headless [WanGP](https://github.com/deepbeepmeep/Wan2GP) worker on your own GPU, and lets you trim, score and export the result as an MP4. Optional voice tools can transcribe source audio and group speakers locally with NVIDIA Nemotron-3-Diarization or pyannote to build voice references. Nothing is sent to a cloud renderer; an AI planner is optional and only used if you configure one.
+Orch3stra is a self-hosted AI filmmaking studio that runs in your browser. You describe a story, pick or build reference images and voices for your cast, and Orch3stra plans the film as short generated windows, renders them through a local, headless [WanGP](https://github.com/deepbeepmeep/Wan2GP) worker on your own GPU, and lets you trim, score and export the result as an MP4. Optional voice tools can transcribe source audio and group anonymous speakers locally (pyannote, or NVIDIA Nemotron-3-Diarization) to build voice references; these run on the CPU, not the GPU. Nothing is sent to a cloud renderer; an AI planner is optional and only used if you configure one.
 
 Orch3stra was previously called Shotweft and H3 Director. That is why settings use `H3_*` names and data lives in `~/.local/share/h3-director`. Released under the [MIT license](LICENSE); third-party materials and separately installed models keep their own terms ([notices](THIRD_PARTY_NOTICES.md)).
 
@@ -13,7 +13,7 @@ _Coming soon: example films and screenshots._
 | | |
 | --- | --- |
 | OS | Linux. macOS and Windows are untested. |
-| GPU / VRAM | An NVIDIA GPU that can run your chosen WanGP model. Orch3stra has no fixed minimum: memory use depends on the model, resolution, number of references and window length. Start small (see [Timing](#configuration-basics)). |
+| GPU / VRAM | Whatever your chosen model needs in WanGP: Orch3stra adds no GPU requirement of its own, so follow [WanGP's upstream requirements](https://github.com/deepbeepmeep/Wan2GP). Memory use grows with resolution, number of references and window length, so start small (see [Timing](#configuration-basics)). |
 | WanGP | An existing, working WanGP install with its own Python environment. Orch3stra does not bundle WanGP, models, or a Python environment, and never downloads models during startup. |
 | Python | The WanGP environment's interpreter, Python 3.10 or newer. |
 | Node.js | Node 22 or newer. No `npm install` step is needed. |
@@ -79,7 +79,7 @@ Keep the default loopback bind. `H3_HOST=0.0.0.0` enables LAN access with device
 
 **AI planner.** Optional. Configure it in Settings, or sign in with a Codex subscription ([docs/USAGE.md](docs/USAGE.md#codex-subscription-sign-in)). Provider calls may cost money.
 
-**Optional voice tools.** Check what's installed with `node scripts/setup-tools.mjs --check`. `--install-tools` installs extra packages into the selected environment, so back that environment up first. See [ENVIRONMENT.md](ENVIRONMENT.md) and [DIARIZATION.md](DIARIZATION.md).
+**Optional voice tools.** Check what's installed with `node scripts/setup-tools.mjs --check`. `--install-tools` installs extra packages into the selected environment, so back that environment up first. Transcription (faster-whisper) and speaker grouping (pyannote or Nemotron) run on the CPU: the voice worker is started with no visible GPU, so they don't compete with renders for VRAM, but long sources take a while. The Nemotron installer (`--nemotron`) is currently disabled until a specific Transformers release is pinned; an existing Nemotron setup keeps working. See [ENVIRONMENT.md](ENVIRONMENT.md) and [DIARIZATION.md](DIARIZATION.md).
 
 **Lifecycle.** `node start-headless.mjs --status` shows the worker. `--stop` stops an idle worker and refuses to stop one that's rendering. Closing the browser tab doesn't stop anything. Ctrl-C stops the editor, but an accepted render keeps going in the worker. After a restart, managed sequences stay paused until you resume them.
 
