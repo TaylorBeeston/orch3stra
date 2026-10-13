@@ -6,7 +6,11 @@ Orch3stra was previously called Shotweft and H3 Director. That is why settings u
 
 ## Showcase
 
-_Coming soon: example films and screenshots._
+[![Orch3stra in 50 seconds: brief, cast, references, windows, prompt, local render, film](docs/media/orch3stra-teaser.gif)](docs/media/orch3stra-promo.mp4)
+
+**[Watch the 50-second tour with sound (MP4)](docs/media/orch3stra-promo.mp4)**
+
+The footage in the tour is *The Keeper*, a 30-second film made end to end in Orch3stra. A one-paragraph brief was planned into a cast and two scenes with Codex. Four reference pictures were generated with Qwen Image 2.1 (Viggle Turbo, 6 steps). The film was rendered as two 15-second MiniMax H3 Ref2VA windows (pruned 20B, PDD-8, 832×480) on a 16 GB laptop GPU, at about 13 minutes per window, then finished in Post. Its picture and sound both come straight from H3.
 
 ## Requirements
 
