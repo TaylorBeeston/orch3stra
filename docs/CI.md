@@ -1,11 +1,15 @@
 # CPU source checks
 
-The `CPU source checks` GitHub Actions workflow runs on pushes to main/ci branches and pull requests targeting main. It uses Ubuntu 24.04, Node 22 and Python 3.12, with a six-minute job limit and per-command timeouts. No npm/pip packages or backend are installed. Official checkout/runtime actions are pinned to full release commit hashes; checkout does not persist credentials. Workflow permissions are `contents: read`; it uses no user secrets, privileged pull-request trigger, deployment or publishing step.
+The `CPU source checks` GitHub Actions workflow runs on pushes to `main` and `ci/**` branches and on pull requests targeting `main`. It uses Ubuntu 24.04, Node 22 and Python 3.12, with a six-minute job limit and per-command timeouts. No npm/pip packages or backend are installed. The official checkout/runtime actions are pinned to full commit hashes, checkout does not persist credentials, and the workflow has `contents: read` permission only. It uses no secrets and has no deployment or publishing step.
 
-Checks cover all allowlisted JavaScript/Python syntax; bridge-startup preview ordering, storage data-URL decoding, timing, planner timing, editing/take dependencies, speech-review metadata and speech-quality classification using synthetic data; the three packaging unit tests; and actual disposable source ZIP/TAR builds/extractions with integrity, manifest/checksum, reviewed inventory, required notices and excluded research-material checks. Two builds verify ZIP reproducibility. TAR gzip timestamps are not claimed reproducible.
+`scripts/check-ci.py` checks:
 
-Each run clears inherited test-process environment variables and provides fresh HOME, CODEX_HOME and H3 data paths, an absent backend path and offline model flags. GitHub-hosted runners provide the clean machine boundary; this is not a network-disabled or hermetic sandbox. The selected tests have no provider/model/network dependency. CPU speech fixtures do not run ASR. Node/Python setup downloads runtimes, not models. The package build is validation only: no archives are uploaded or released.
+- JavaScript/Python syntax of every file tracked by Git;
+- that `LICENSE` and `THIRD_PARTY_NOTICES.md` are present, and that the upstream-derived WanGP mux research material excluded pending licensing review is not tracked;
+- synthetic fixtures for bridge-startup preview ordering, storage data-URL decoding, timing, planner timing, editing/take dependencies, speech-review metadata and speech-quality classification.
 
-CI excludes Chromium/UI interaction, Gradio/WanGP compatibility, FFmpeg media rendering, real model/reference judgment, ASR, GPU inference, hardware fit, production data, full recovery and physical-device behavior. A green run does not establish those capabilities or license clearance for unbundled models. No cache, credential, paid service, automatic publication or repository-setting change is required.
+Each run clears inherited environment variables and provides fresh `HOME`, `CODEX_HOME` and H3 data paths, an absent backend path and offline model flags. GitHub-hosted runners provide the clean machine; this is not a network-disabled sandbox. The checks have no provider, model or network dependency, and the speech fixtures do not run ASR.
 
-Run the same checks with `python3 -B scripts/check-ci.py` in an isolated checkout using Node 22 and Python 3.12+. Tests run with standard libraries only. Keep the reviewed source allowlist current when adding distributable files; the CI runner regenerates disposable archive manifests rather than verifying an edited Git checkout as an old release extraction.
+CI does not cover Chromium/UI interaction, Gradio/WanGP compatibility, FFmpeg media rendering, real model judgment, ASR, GPU inference, hardware fit or production data. A green run does not establish those.
+
+Run the same checks locally from a checkout with Node 22 and Python 3.12+: `python3 -B scripts/check-ci.py`. The broader local suite is `node scripts/check-all.mjs` (add `--integration` for the browser suites, which need Playwright/Chromium).

@@ -111,6 +111,6 @@ The full table is in [FIRST-RUN.md](FIRST-RUN.md). Logs can contain prompts and 
 
 ## Contributing
 
-Run the CPU-only checks with `node scripts/check-all.mjs` (CI runs `python scripts/check-ci.py`; see [docs/CI.md](docs/CI.md)). They use synthetic fixtures and never run models. Use a single Git checkout for both development and launch; see [docs/CANONICAL-SOURCE.md](docs/CANONICAL-SOURCE.md).
+Run the CPU-only checks with `node scripts/check-all.mjs` (CI runs `python scripts/check-ci.py`; see [docs/CI.md](docs/CI.md)). They use synthetic fixtures and never run models. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-To verify a source archive, run `sha256sum -c MANIFEST.sha256` from its root.
+Use one Git checkout for both development and running the app, and update it with `git pull` while the worker is idle. Your projects live in `H3_DATA_DIR`, not in the checkout.

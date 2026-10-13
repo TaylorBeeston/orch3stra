@@ -33,7 +33,7 @@ async function main() {
     const html = await readFile(join(root, 'index.html'), 'utf8');
     const scripts = [...html.matchAll(/<script\b[^>]*src="([^"]+)"/g)].map(m => m[1]);
     assert.deepEqual(scripts, ['core.js', 'timing-core.js', 'timing-ui.js', 'edit-core.js', 'post-core.js', 'studio-core.js', 'storage.js', 'providers.js', 'speech-core.js', 'speech-review-core.js', 'speech-quality-core.js', 'speech-quality-ui.js', 'speech-review-ui.js', 'speech-ui.js', 'takes-ui.js', 'direction-ui.js', 'soundscape-ui.js', 'studio-ui.js', 'backend-ui.js', 'sequence-ui.js', 'ai-ui.js', 'progress-core.js', 'progress-ui.js', 'editor-ui.js', 'render-selection-core.js', 'render-selection-ui.js', 'reference-core.js', 'reference-ui.js', 'clinic-core.js', 'film-core.js', 'clinic-ui.js', 'film-ui.js', 'voice-studio.js', 'codex-ui.js', 'scene-core.js', 'doctor-core.js', 'reference-agent-core.js', 'coverage-ui.js', 'scene-ui.js', 'post-ui.js', 'scene-edit-core.js', 'scene-edit-ui.js', 'sound-core.js', 'sound-ui.js', 'workspace-ui.js', 'image-crop-ui.js', 'music-ui.js','app-confirm.js', 'pending-intent.js', 'app.js']);
-    for (const name of [...scripts, 'styles.css', 'workspace.css', 'bridge.mjs', 'README.md', 'AGENTS.md', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md',
+    for (const name of [...scripts, 'styles.css', 'workspace.css', 'bridge.mjs', 'README.md', 'THIRD_PARTY_NOTICES.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md',
                         'wan2gp-h3-director/plugin.py', 'wan2gp-h3-director/__init__.py']) {
       await readFile(join(root, name));
     }

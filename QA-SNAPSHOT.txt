@@ -1,4 +1,0 @@
-Orch3stra 2.3.0 source release. Worker version: 2.3.0.
-Use the Git checkout of https://github.com/TaylorBeeston/orch3stra for both development and launch; see docs/CANONICAL-SOURCE.md. Switching an existing installation to that checkout requires an idle worker and the cutover steps in that document.
-CPU CI and fixture tests cover their documented scope only; runtime and model limits remain documented.
-See VALIDATION-2.3.0.md, RELEASE-LICENSE-DECISION.md and THIRD_PARTY_NOTICES.md.
