@@ -56,7 +56,7 @@ If you only want to edit, without starting a renderer, run `node bridge.mjs` ins
 - **Project data** (projects, media, settings, credentials): `H3_DATA_DIR`, default `~/.local/share/h3-director`.
 - **Worker renders:** `H3_HEADLESS_DATA_DIR`, default `$H3_DATA_DIR/headless`, which holds `uploads/`, `outputs/`, `previews/` and `continuations/` plus the job database.
 
-Treat these folders as private. Back up the whole data directory before moving or upgrading anything, and see [MIGRATION-2.3.0.md](MIGRATION-2.3.0.md).
+Treat these folders as private. Back up the whole data directory before moving or upgrading anything, and see [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Configuration basics
 
@@ -77,7 +77,7 @@ Keep the default loopback bind. `H3_HOST=0.0.0.0` enables LAN access with device
 
 **Timing.** By default each generated window aims for 15 seconds (24 fps). Windows of up to 30 seconds need an explicit opt-in in Settings. Longer windows use much more RAM and VRAM, and your model's limit still applies. See [TIMING-ADVISOR.md](TIMING-ADVISOR.md).
 
-**AI planner.** Optional. Configure it in Settings, or sign in with a Codex subscription ([CODEX.md](CODEX.md)). Provider calls may cost money.
+**AI planner.** Optional. Configure it in Settings, or sign in with a Codex subscription ([docs/USAGE.md](docs/USAGE.md#codex-subscription-sign-in)). Provider calls may cost money.
 
 **Optional voice tools.** Check what's installed with `node scripts/setup-tools.mjs --check`. `--install-tools` installs extra packages into the selected environment, so back that environment up first. See [ENVIRONMENT.md](ENVIRONMENT.md) and [DIARIZATION.md](DIARIZATION.md).
 
@@ -105,7 +105,7 @@ The full table is in [FIRST-RUN.md](FIRST-RUN.md). Logs can contain prompts and 
 - [HEADLESS.md](HEADLESS.md): the headless WanGP worker
 - [EDITOR.md](EDITOR.md), [POST.md](POST.md), [SEQUENCES.md](SEQUENCES.md), [REFERENCES.md](REFERENCES.md): feature guides
 - [ENVIRONMENT.md](ENVIRONMENT.md), [DIARIZATION.md](DIARIZATION.md): optional speech tools
-- [MIGRATION-2.3.0.md](MIGRATION-2.3.0.md), [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md): upgrades and backups
+- [docs/UPGRADING.md](docs/UPGRADING.md), [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md): upgrades and backups
 - [WANGP-COMPATIBILITY.md](WANGP-COMPATIBILITY.md): supported WanGP versions
 - [CHANGELOG.md](CHANGELOG.md), [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md)
 

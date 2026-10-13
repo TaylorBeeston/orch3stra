@@ -6,4 +6,4 @@ Project JSON and references are untrusted input. Preserve validation, path owner
 
 Lost submissions must reconcile their recorded request ID before another request. Queue restart pauses queued work and marks in-flight work interrupted; do not auto-replay inference. Backup cancellation must not erase original data. Browser storage is origin-scoped and is not automatically moved by server migration.
 
-For a suspected issue, report privately to the maintainer through an agreed channel before publication. A public reporting address and support policy are not configured yet. Provide synthetic reproduction steps, version and redacted evidence; do not attach secrets, private project content or harmful payloads. See RELEASE-GATES.md for unresolved audit coverage.
+For a suspected issue, report privately to the maintainer through an agreed channel before publication. A public reporting address and support policy are not configured yet. Provide synthetic reproduction steps, version and redacted evidence; do not attach secrets, private project content or harmful payloads.

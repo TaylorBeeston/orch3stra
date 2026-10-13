@@ -186,4 +186,4 @@ Qwen accepting ten input images does not increase H3's input limits.
 - DeepSeek vision: https://api-docs.deepseek.com/guides/vision/
 
 Integration tests use real local images/HTTP/archives, but simulated model results.
-See VALIDATION-1.4.0.md before treating this as tested GPU inference on your installation.
+Do not treat this as tested GPU inference on your installation.

@@ -11,8 +11,8 @@ No dependencies, plugin installation, token rotation, or data reset are needed.
 For the already-failed reference run, use **Fill references → Retry image as one prompt**.
 It retries the saved request, not the whole preparation pass, with a new native request ID.
 The old error, completed windows, accepted pictures and spent allowances are preserved.
-Candidate review still runs. See **IMAGE-PROMPT-FIX.md** for safe service upgrades and
-budget/queue-pause details. Earlier release sections below are historical.
+Candidate review still runs. See **docs/USAGE.md** (Reference images, Upgrading safely) for
+safe service upgrades and budget/queue-pause details. Earlier release sections below are historical.
 
 ---
 

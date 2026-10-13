@@ -53,6 +53,6 @@ CPU speech tools are separate from the minimum editing setup; inspect them with
 `node scripts/setup-tools.mjs --check` before deciding on any explicit installation.
 Never infer speaker identities or silence from a model-free check or an ASR draft.
 
-Before migration, read [MIGRATION-2.3.0.md](MIGRATION-2.3.0.md). For the distinction
+Before upgrading, read [docs/UPGRADING.md](docs/UPGRADING.md). For the distinction
 between a finished movie and editable source backup, read
 [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md).

@@ -144,7 +144,7 @@ reference selection does not erase audio already in that tail. Zero overlap is a
 cut. It is often more appropriate for B-roll, location changes or a time jump. Neither
 H3 overlap nor its zero-overlap setting is an editor dissolve/crossfade.
 
-See RESEARCH.md for upstream prompt/handler sources. The editor's +/-4 decoded-frame
+Upstream prompt/handler sources are linked from the in-app Field guide. The editor's +/-4 decoded-frame
 completed-output policy remains a Director recovery policy, not an upstream guarantee.
 
 ## Export the final movie
@@ -274,4 +274,3 @@ Playwright and Gradio are optional test dependencies, not new production depende
 Finishing uses real FFmpeg/FFprobe in tests. Native upscale inference is simulated.
 The browser tests use a real synthetic MP4 with stubbed provider/renderer endpoints.
 No live H3/FlashVSR render or DeepSeek call on the target machine is implied by those tests.
-See VALIDATION-1.3.0.md for the exact release results.

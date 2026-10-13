@@ -1,19 +1,19 @@
-# Migration, backup and rollback
+# Upgrading, backup and rollback
 
-Extract the candidate into a new source directory. Keep the old release, runtime environments, and H3_DATA_DIR. Never upgrade dependencies or overwrite a checkout while it owns active work. Inspect native jobs, managed coordinators and AI requests first; pause future dispatch and wait for accepted work before an intentional upgrade.
+Upgrade the Git checkout in place (`git pull`), or check out a new revision, while the app is idle. Keep your runtime environments and H3_DATA_DIR. Note the current commit (`git rev-parse HEAD`) so you can return to it. Never upgrade dependencies or overwrite a checkout while it owns active work. Inspect native jobs, managed coordinators and AI requests first; pause future dispatch and wait for accepted work before an intentional upgrade.
 
 Before switching source paths, make a private, consistent backup of the full data directory (SQLite databases and associated files, jobs, uploads, immutable outputs, checkpoints, service settings and credentials), plus browser-origin projects/media and any separately referenced source/output locations. Stop writers during a full snapshot; preserve file metadata where possible. Verify file hashes and perform a disposable restore, not a production overwrite. Keep secrets private. Export each browser-local project as a portable backup before moving origins. Exported MP4s alone cannot restore an edit.
 
 On an idle source upgrade, explicitly stop the old editor and worker before starting the new source with the same reviewed data/runtime paths. Generated user services capture absolute source/interpreter paths; review and regenerate them explicitly if those paths change. Starting a second worker does not migrate or recover a queue.
 
-Source-only rollback can select the preserved old source and original data before incompatible new work. Full-data rollback must preserve post-upgrade changes separately. Worker outputs may freeze device/inode/mtime identities: a byte-identical filesystem copy is not necessarily a valid continuation source. Do not rewrite provenance locks to force acceptance; inspect/reimport through an owned-output workflow or obtain a reviewed provenance-aware restoration plan. Portable backups omit native worker checkpoints and output ownership context.
+Source-only rollback can check out the previous commit with the original data before incompatible new work. Full-data rollback must preserve post-upgrade changes separately. Worker outputs may freeze device/inode/mtime identities: a byte-identical filesystem copy is not necessarily a valid continuation source. Do not rewrite provenance locks to force acceptance; inspect/reimport through an owned-output workflow or obtain a reviewed provenance-aware restoration plan. Portable backups omit native worker checkpoints and output ownership context.
 
-The offline suites cover isolated worker restart, queue pause/reconciliation, CAS conflicts, portable export/import, audit cancellation, and retained output bytes. They do not establish a full production disaster-recovery guarantee. A complete browser + worker + service-path restore rehearsal remains a release gate.
+The offline suites cover isolated worker restart, queue pause/reconciliation, CAS conflicts, portable export/import, audit cancellation, and retained output bytes. They do not establish a full production disaster-recovery guarantee. A complete browser + worker + service-path restore has not been rehearsed.
 
 
 ## Fresh-path footage recovery
 
-A file snapshot is not a portable worker-state restore. Output records retain absolute paths and device/inode/size/mtime identities. Moving or copying byte-identical files does not transfer that ownership. An unavailable old output is a protective refusal, not permission to edit its path/stat record. This candidate has no verified in-place relink or full model-checkpoint restore command.
+A file snapshot is not a portable worker-state restore. Output records retain absolute paths and device/inode/size/mtime identities. Moving or copying byte-identical files does not transfer that ownership. An unavailable old output is a protective refusal, not permission to edit its path/stat record. There is no verified in-place relink or full model-checkpoint restore command.
 
 For footage recovery, retain a private untouched snapshot and hash manifest. Verify the preserved movie against the snapshot's recorded SHA256 before importing; a hash generated only after damage is not proof of the original bytes. Keep the old projects, jobs and IDs for inspection. Start the recovered worker only deliberately under the normal idle/start safeguards; do not replay queued or uncertain requests.
 
