@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = [
-    "check-provider-startup.cjs", "check-storage-decoder.cjs", "check-timing.mjs", "check-planner-timing.mjs",
+    "check-nemotron-install.mjs", "check-provider-startup.cjs", "check-storage-decoder.cjs", "check-timing.mjs", "check-planner-timing.mjs",
     "check-edit.mjs", "check-take-dependencies.mjs", "check-speech-review.mjs",
     "check-speech-quality.mjs",
 ]

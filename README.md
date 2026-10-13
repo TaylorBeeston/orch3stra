@@ -53,10 +53,11 @@ If you only want to edit, without starting a renderer, run `node bridge.mjs` ins
 ## Where outputs go
 
 - **Finished movies:** in Post, use **Download Post MP4**, or **Save movie & sidecars to Videos** to write the export into `~/Videos`.
-- **Project data** (projects, media, settings, credentials): `H3_DATA_DIR`, default `~/.local/share/h3-director`.
+- **Browser projects and reference media:** saved in this browser’s IndexedDB, separately for each browser profile and site origin. Unsynced projects/media can exist only there.
+- **Published server copies and server settings:** `H3_DATA_DIR`, default `~/.local/share/h3-director`. **Publish / save current project** is opt-in; this directory does not automatically contain all browser projects or their latest edits.
 - **Worker renders:** `H3_HEADLESS_DATA_DIR`, default `$H3_DATA_DIR/headless`, which holds `uploads/`, `outputs/`, `previews/` and `continuations/` plus the job database.
 
-Treat these folders as private. Back up the whole data directory before moving or upgrading anything, and see [docs/UPGRADING.md](docs/UPGRADING.md).
+Before moving/upgrading, clearing browser storage or changing browser profile/origin, export a **portable project backup for every unsynced project**, including its needed reference media. Portable backups do not embed worker-owned rendered videos: back up those files and the server data directory separately. Treat these folders and exports as private; see [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md) and [docs/UPGRADING.md](docs/UPGRADING.md).
 
 ## Configuration basics
 
