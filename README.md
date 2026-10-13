@@ -44,11 +44,12 @@ If you only want to edit, without starting a renderer, run `node bridge.mjs` ins
 
 ## Making your first video
 
-1. In the editor, write a short original brief, open **Story → Story + cast**, and review the proposal before applying it.
-2. Add reference images (and, optionally, voices) that you own or are licensed to use. For each window, check which cast members appear and are heard.
-3. Start with **one short window**. Review its render plan, then submit it. Rendering is always an explicit action and loads your installed model.
-4. Watch progress in **Render overview**. When footage is ready, trim and mix it in **Post** and export it.
-5. Also make a **portable project backup**. A movie export and a project backup are different things; see [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md).
+1. Open **Settings** (or click **Connect an AI planner →** under the brief). Pick a planner and its model, click **Connect & discover**, choose an **H3 Ref2VA** preset (the pruned 20B PDD-8 preset suits 16–24 GB GPUs), tick the confirmation box and **Save preferences**. Rendering is refused until a preset is confirmed.
+2. In the editor, write a short original brief, open **Story → Story + cast**, and review the proposal before applying it.
+3. Add reference images (and, optionally, voices) that you own or are licensed to use. For each window, check which cast members appear and are heard.
+4. Start with **one short window**. Review its render plan, then submit it. Rendering is always an explicit action and loads your installed model.
+5. Watch progress in **Render overview**. When footage is ready, trim and mix it in **Post** and export it.
+6. Also make a **portable project backup**. A movie export and a project backup are different things; see [PORTABLE-BACKUPS.md](PORTABLE-BACKUPS.md).
 
 ## Where outputs go
 
@@ -93,6 +94,8 @@ Keep the default loopback bind. `H3_HOST=0.0.0.0` enables LAN access with device
 | `spawn ... ENOENT` / Python not found | Fix the Python path with `--setup`. |
 | FFmpeg/FFprobe unavailable | Install them, or set `FFMPEG_BIN` / `FFPROBE_BIN`. |
 | Out of memory / very slow renders | Use a shorter window, fewer references, a lower resolution, or a smaller model. |
+| Render overview says the renderer is no longer running | The worker process exited, most often because Linux's out-of-memory killer stopped it while a model was loading (H3 pins about 20 GB of weights in RAM). Check `journalctl -k \| grep -i oom` and the end of `worker.log`, close memory-heavy apps (large `/tmp` tmpfs contents count too), then use **Restart renderer**. The interrupted job is marked failed, never replayed. |
+| "Renderer queue is paused" | The worker pauses its queue after restarting with unfinished work so nothing replays unexpectedly. When you start a render you'll be offered **Resume renderer queue**; then start it again. |
 | "A different renderer version is running" / different WanGP root | Wait for the current render to finish, run `node start-headless.mjs --stop`, then start again. |
 | Second editor refused (writer lock) | Only one editor can use a data directory at a time. Stop the other one. Never delete the lock or ledger blindly; see [docs/INTENT-LOCK-RECOVERY.md](docs/INTENT-LOCK-RECOVERY.md). |
 | Unsure whether a render was submitted | Check Render overview and the worker status before you resubmit. Don't blindly repeat it. |

@@ -59,7 +59,8 @@ def preflight(root, data, which=shutil.which, env=None):
             result = subprocess.run([gpu, '--query-gpu=memory.total,memory.free,utilization.gpu', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=3)
             lines = result.stdout.strip().splitlines()
             safe = lines and all(all(x.strip().isdigit() for x in line.split(',')) and len(line.split(',')) == 3 for line in lines)
-            add('gpu', 'advisory', 'review' if result.returncode == 0 and safe else 'unknown', result.stdout.strip() if safe else 'GPU query failed; inspect installed driver. No runtime or model was loaded.')
+            described = '; '.join('GPU %d: %s MiB total, %s MiB free, %s%% busy' % (i, *(x.strip() for x in line.split(','))) for i, line in enumerate(lines)) if safe else ''
+            add('gpu', 'advisory', 'review' if result.returncode == 0 and safe else 'unknown', described+'. Other programs using VRAM reduce what WanGP can load.' if safe else 'GPU query failed; inspect installed driver. No runtime or model was loaded.')
         except (OSError, subprocess.SubprocessError):
             add('gpu', 'advisory', 'unknown', 'GPU query unavailable; inspect driver and GPU ownership before generation.')
     else:

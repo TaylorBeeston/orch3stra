@@ -2,7 +2,7 @@
 import hashlib,json,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 from headless.engine import HeadlessEngine
-from tests.test_headless import Session,plan,payload
+from test_headless import Session,plan,payload
 
 def hashes(root):return {p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
 @unittest.skipUnless(shutil.which('ffmpeg') and shutil.which('ffprobe'),'Installed CPU codecs required')

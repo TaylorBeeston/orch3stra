@@ -121,7 +121,7 @@ export class SequenceCoordinator {
       return{supported:true,reachable:true,checkedAt:new Date().toISOString(),paused:q.paused,active_job_id:q.active_job_id||null,
         jobs:q.jobs.map(j=>({job_id:j.job_id,status:j.status,project_name:j.project_name,progress:j.progress,message:j.message})),
         idle:!q.active_job_id&&!q.jobs.some(j=>!nativeTerminal.has(j.status))};
-    }catch(e){return{supported:true,reachable:false,checkedAt:new Date().toISOString(),error:e.message,idle:false};}
+    }catch(e){const d=await this.backend?.diagnose?.().catch(()=>null);return{supported:true,reachable:false,checkedAt:new Date().toISOString(),error:d?.exited?d.message:e.message,restartable:d?.exited===true,idle:false};}
   }
   unknownJob(e) {return(e.status===400||e.status===404)&&/^Unknown job\b/i.test(e.message);}
   async observe(r,queue=null) {
@@ -195,7 +195,8 @@ export class SequenceCoordinator {
     const blockers=rows.filter(r=>r.blocking),nativeBusy=queue.reachable&&!queue.idle,finishingBusy=!!this.externalBusy?.();
     return{version:1,checkedAt:new Date().toISOString(),backend:this.backendMode,queue,runs:rows,
       canSubmitManaged:!finishingBusy&&!blockers.length&&(this.backendMode==='legacy'||(queue.reachable&&queue.idle&&!queue.paused)),
-      explanation:finishingBusy?'An active finishing or reference preparation task reserves the renderer. Inspect Finishing / Reference agent before submitting.':blockers.length?'Resolve or park the blocking sequences shown below.':!queue.reachable&&this.backendMode==='headless'?'Renderer unreachable; cannot verify availability.':nativeBusy?'WanGP has queued/running work.':queue.paused?'WanGP is idle but its queue is paused. Unpause it separately.':'Ready for a new managed sequence. Parked sequences remain saved.'};
+      queuePausedOnly:!finishingBusy&&!blockers.length&&this.backendMode==='headless'&&queue.reachable&&queue.idle&&queue.paused,
+      explanation:finishingBusy?'An active finishing or reference preparation task reserves the renderer. Inspect Finishing / Reference agent before submitting.':blockers.length?'Resolve or park the blocking sequences shown below.':!queue.reachable&&this.backendMode==='headless'?'Renderer unreachable; cannot verify availability.':nativeBusy?'WanGP has queued/running work.':queue.paused?'The renderer is idle but its queue is paused (it pauses itself after a restart with unfinished work). Resume the queue to start new work.':'Ready for a new managed sequence. Parked sequences remain saved.'};
   }
   async assertAvailable(except=null) {
     if(this.externalBusy?.())throw Error("An active finishing or reference preparation task reserves the renderer. Open Finishing / Reference agent first.");
@@ -208,7 +209,7 @@ export class SequenceCoordinator {
     if(this.backendMode==='headless') {
       if(!queue.reachable)throw Error('Cannot verify WanGP queue: '+queue.error);
       if(!queue.idle)throw Error('WanGP has active or queued jobs. Open Sequences to inspect the renderer.');
-      if(queue.paused)throw Error('WanGP queue is paused. Unpause it in Sequences before continuing.');
+      if(queue.paused)throw Object.assign(Error('The renderer queue is paused, so nothing new can start. It pauses itself after a worker restart with unfinished work, or when you choose Pause. Resume it, then try again.'),{status:409,code:'QUEUE_PAUSED'});
     }
   }
   async start(raw,url,ownedId=null) {return this.store.serialize('sequence-start',()=>this.startUnlocked(raw,url,ownedId));}

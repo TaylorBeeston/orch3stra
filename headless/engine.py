@@ -172,8 +172,8 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
             self.dispatcher = threading.Thread(target=self._dispatch, name='h3-headless-dispatch', daemon=True)
             self.dispatcher.start()
 
-    def _save_pause(self):
-        self.db.execute('INSERT OR REPLACE INTO meta VALUES (?,?)', ('paused', json_text(self.paused)))
+    def _save_pause(self, value=None):
+        self.db.execute('INSERT OR REPLACE INTO meta VALUES (?,?)', ('paused', json_text(self.paused if value is None else bool(value))))
         self.db.commit()
 
     def _save_job(self, job_id):
@@ -882,8 +882,12 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
     def close(self, timeout=30):
         with self.wake:
             self.closed = True
+            # Dispatch stops now. Persist the pause only when it protects queued work
+            # (or the user had paused deliberately); an empty idle queue restarts unpaused.
+            queued = any(j['state']['status'] == 'queued' for j in self.jobs.values())
+            keep_paused = self.paused or queued
             self.paused = True
-            self._save_pause()
+            self._save_pause(keep_paused)
             if self.active_id:
                 self.cancel(self.active_id)
             self.wake.notify_all()

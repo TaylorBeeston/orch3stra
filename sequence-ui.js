@@ -60,6 +60,7 @@ window.H3SequenceUI={create(ctx){
     <div class="seq-toolbar"><button data-seq-action="refresh">Refresh state</button>
       <button data-seq-action="clear-preview" ${!active.length?'disabled':''}>End all safely idle…</button>
       ${q.reachable?`<button data-seq-action="queue-${q.paused?'resume':'pause'}">${q.paused?'Unpause WanGP queue':'Pause WanGP after current job'}</button>`:''}
+      ${!q.reachable&&q.restartable?'<button class="primary" data-seq-action="restart-renderer">Restart renderer</button>':''}
       <button data-seq-action="native">Open native queue</button>
       <label>Show <select id="sequence-filter" aria-label="Filter sequences">${[['active','Current list'],['attention','Needs attention / running'],['parked','Parked'],['history','History'],['all','Everything']].map(([v,n])=>`<option value="${v}" ${filter===v?'selected':''}>${n}</option>`).join('')}</select></label>
     </div>
@@ -172,6 +173,10 @@ window.H3SequenceUI={create(ctx){
       if(!ids.length)return toast('No unfinished sequences.');return preview(ids).catch(e=>toast(e.message,true));
     }
     if(action==='download')return perform(async()=>ctx.download('sequence-'+id+'-diagnostic.json',await call({action:'diagnostics',id})),'Preparing sequence diagnostic');
+    if(action==='restart-renderer'){
+      if(!confirm('Start the headless renderer again? A job that was interrupted is marked failed (never replayed), and the queue then stays paused until you resume it. Model loading can take a few minutes.'))return;
+      return perform(async()=>{const r=await P.call('renderer',{action:'restart'});toast('Renderer restarted ('+(r.runtime_state||'initializing')+'). Reconcile or resume your sequence when it is ready.');},'Restarting renderer');
+    }
     if(action==='queue-resume'||action==='queue-pause'){
       const resume=action==='queue-resume';
       if(!confirm(resume?'Unpause WanGP? Already queued native jobs may start. Parked managed sequences will NOT resume.':'Pause WanGP dispatch after the current native job? This affects the whole renderer, not just one film.'))return;
