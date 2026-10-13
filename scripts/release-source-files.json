@@ -257,8 +257,6 @@
   "timing-ui.js",
   "voice-server.mjs",
   "voice-studio.js",
-  "wan2gp-h3-director/INSTALL-1.0.3.md",
-  "wan2gp-h3-director/INSTALL-1.0.4.md",
   "wan2gp-h3-director/INSTALL-1.0.5.md",
   "wan2gp-h3-director/__init__.py",
   "wan2gp-h3-director/plugin.py",
