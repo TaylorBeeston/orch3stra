@@ -174,12 +174,49 @@ function draftPacket(p,windows){
  packet.responseShape.windows[0].referenceRequests=[{subjectId:'existing subject ID or empty',role:'wardrobe|setting|prop|angle|pose',state:'required state',angle:'desired view',description:'what is missing and why'}];
  return packet;
 }
+// Missing-reference requests are advisory hints from the drafting model. One malformed hint must never discard an otherwise good draft: keep the valid ones, drop the rest, and tell the user exactly what was dropped and why.
+const REQUEST_ROLES=['identity','wardrobe','setting','prop','angle','pose'];
+function cleanRequests(w,old,p,part){
+ const notes=[],active=new Set(w.subjectIds||old?.subjectIds||[]),title=w.title||old?.title||w.id;
+ const label=x=>x&&typeof x==='object'?String(x.description||x.state||x.role||'').trim().slice(0,100)||'(no description)':'(not an object)';
+ const resolve=raw=>{if(!raw)return '';const k=String(raw).trim().toLowerCase();return p.subjects.find(s=>[s.id,`<Subject ${s.number}>`,`Subject ${s.number}`,s.name].some(l=>String(l).trim().toLowerCase()===k))?.id||String(raw);};
+ const list=Array.isArray(w.referenceRequests)?w.referenceRequests:[];
+ if(!Array.isArray(w.referenceRequests))notes.push(`"${title}": the model's missing-reference list was malformed and was ignored.`);
+ const kept=[];
+ for(const x of list){
+  const subjectId=x&&typeof x==='object'?resolve(x.subjectId):'';
+  const why=!x||typeof x!=='object'||Array.isArray(x)?'it was not a request object'
+   :!REQUEST_ROLES.includes(x.role)?`its role "${String(x.role).slice(0,30)}" is not one of ${REQUEST_ROLES.join('/')}`
+   :typeof x.description!=='string'||!x.description.trim()?'it had no description'
+   :subjectId&&!p.subjects.some(s=>s.id===subjectId)?'it named a subject that is not registered'
+   :subjectId&&!active.has(subjectId)?'it named a subject that is not in this window\'s cast'
+   :kept.length>=8?'a window can carry at most 8 requests':'';
+  if(why){notes.push(`"${title}": ignored a missing-reference request (${why}): ${label(x)}`);continue;}
+  kept.push({subjectId,role:x.role,state:String(x.state||'').slice(0,500),angle:String(x.angle||'').slice(0,500),description:x.description.slice(0,4000)});
+ }
+ if(notes.length)part.notes=[...(Array.isArray(part.notes)?part.notes:[]),...notes];
+ return kept;
+}
+// Turns a drafting failure into what happened, what is safe, and what to do next, so no error is a dead end.
+function draftAdvice(message,{failed=[],done=0,total=0,batchSize=1,stage='review'}={}){
+ const m=String(message||''),where=failed.length?`while drafting ${failed.map(t=>'"'+t+'"').join(', ')}`:'';
+ const base={where,safe:'Your timeline was not changed. The model\'s raw reply is kept under "Raw model output" below.',retry:done<total?`"Retry unfinished windows" drafts only what is missing${done?` (${done} of ${total} windows already drafted are kept)`:''}.`:'Draft again to retry.',actions:['retry']};
+ const smaller=batchSize>1?' Set the batch size to 1 first: smaller batches fail less often.':'';
+ if(stage==='request')return{...base,title:'The model request did not complete',steps:['Open Connections and check the provider, model, API key and network, then retry.','Provider-side usage may already have been charged for the failed request.'],actions:['connections','retry']};
+ if(/not return valid JSON/i.test(m))return{...base,title:'The model replied with something that was not valid JSON',steps:['This is usually a cut-off or chatty reply, not a problem with your project.'+smaller,'Retry; if it repeats, try a larger-output model in Connections.']};
+ if(/unregistered subject|unknown subject IDs|unregistered <Subject/i.test(m))return{...base,title:'The model used a character, prop or place that is not registered',steps:['Open Subjects & images and confirm every character, prop and location you want in the film exists there (a picture alone is not a subject).','Then retry the unfinished window.'],actions:['subjects','retry']};
+ if(/casting must describe|casting refers to|absent/i.test(m))return{...base,title:'The model\'s per-shot casting did not match its own scene',steps:['It listed a subject without casting notes, or cast one that is not in the window.'+smaller,'Retry the window; the model usually corrects this on a second pass.']};
+ if(/omitted a requested window|unknown or duplicate window/i.test(m))return{...base,title:'The model skipped or repeated a window',steps:['Set the batch size to 1 so each reply covers a single window.','Retry the unfinished windows.']};
+ if(/missing a text field|is unfinished|editor instruction text/i.test(m))return{...base,title:'The model left a required prompt field empty',steps:['Retry; the planner usually fills every field on the next attempt.'+smaller,'If it repeats for the same window, check that window\'s Summary, Detailed description and Soundscape for leftover helper text, since existing text is sent to the model as context.']};
+ if(/timing|duration|overlap|frames/i.test(m))return{...base,title:'The model proposed timing the app cannot use',steps:['Retry. Prose-and-cast drafts keep your current durations; only "Apply prose + cast + timing" uses the model\'s timings.']};
+ return{...base,title:'The draft was rejected by a safety check',steps:['Retry once; replies from models vary between attempts.'+smaller,'If it keeps failing, copy the details below and the raw reply into a bug report so the check can be relaxed or explained.']};
+}
 function parseDraft(raw,ids,p){
  const part=H.parseProposal(raw,ids,p,{allowReview:true});
- for(const w of part.windows){const old=p.windows.find(x=>x.id===w.id);if(w.referenceRequests){if(!Array.isArray(w.referenceRequests)||w.referenceRequests.length>8)throw Error('Too many missing-reference requests in one window.');w.referenceRequests=w.referenceRequests.map(x=>{if(!['identity','wardrobe','setting','prop','angle','pose'].includes(x.role)||x.subjectId&&!old.subjectIds.includes(x.subjectId)||typeof x.description!=='string')throw Error('Invalid missing-reference request.');return{subjectId:x.subjectId||'',role:x.role,state:String(x.state||'').slice(0,500),angle:String(x.angle||'').slice(0,500),description:x.description.slice(0,4000)};});}
+ for(const w of part.windows){const old=p.windows.find(x=>x.id===w.id);if(w.referenceRequests!==undefined){const kept=cleanRequests(w,old,p,part);w.referenceRequests=kept;}
   if(old.referenceManifest){for(const [sid,c]of Object.entries(old.casting||{}))if(Array.isArray(c.sourceAssetIds)&&w.casting?.[sid])w.casting[sid].sourceAssetIds=[...c.sourceAssetIds];}
  }
  return part;
 }
-return{attemptLimit,progressSnapshot,progressCopy,labelBatch,inspectionStamp,coverageTarget,generationPrompt,assertTargetCurrent,LABEL_SYSTEM,labels,defaults,policy,COMMON,PLAN_SYSTEM,REVIEW_SYSTEM,decision,review,compactProject,mergeResult,draftPacket,parseDraft};
+return{attemptLimit,progressSnapshot,progressCopy,labelBatch,inspectionStamp,coverageTarget,generationPrompt,assertTargetCurrent,LABEL_SYSTEM,labels,defaults,policy,COMMON,PLAN_SYSTEM,REVIEW_SYSTEM,decision,review,compactProject,mergeResult,draftPacket,parseDraft,draftAdvice};
 });
