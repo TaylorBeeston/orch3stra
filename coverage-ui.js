@@ -87,6 +87,7 @@ window.H3CoverageUI = {create(ctx) {
       ${a&&ids.length?button('confirm-coverage','I checked: this image matches',`data-issue="${index}" data-needs-pixels="${esc(a?.id||'')}" disabled`):''}
       ${a?button('label-image','Review image labels',`data-issue="${index}"`):''}
       ${i.origins?.filter(o=>o.fieldKey).slice(0,3).map(o=>button('field',esc(o.label),`data-key="${esc(o.fieldKey)}"`)).join('')||''}
+      ${['voice-duration','voice-capacity'].includes(i.code)?'<button type="button" data-action="voice-routing">Open Voice routing</button>':''}
       ${button('inspect-window','Inspect this window',`data-window="${esc(i.windowId)}"`)}</div>
       ${a&&ids.length?'<small>Different state labels may describe the same pixels. Confirm only after inspecting the image; do not approve an actually wrong outfit.</small>':''}</div></article>`;
   }
