@@ -1,4 +1,4 @@
-"""Dependency-free CPU checks run by GitHub Actions; no inference, models or network."""
+"""CPU checks run by GitHub Actions; stdlib plus FFmpeg, no models or external services."""
 import ast
 from pathlib import Path
 import subprocess
@@ -9,6 +9,8 @@ FIXTURES = [
     "check-nemotron-install.mjs", "check-provider-startup.cjs", "check-storage-decoder.cjs", "check-timing.mjs", "check-planner-timing.mjs",
     "check-edit.mjs", "check-take-dependencies.mjs", "check-speech-review.mjs",
     "check-speech-quality.mjs",
+    "check-agent-catalog.mjs", "check-agent-projects.mjs", "check-agent-media.mjs",
+    "check-agent-client.mjs", "check-agent-http.mjs",
 ]
 # Upstream-derived research material that must stay out of the public repository
 # until its licensing is reviewed (see THIRD_PARTY_NOTICES.md).
@@ -45,7 +47,7 @@ def main():
     print("PASS license notices present and excluded upstream material untracked", flush=True)
     for fixture in FIXTURES:
         run(["node", "scripts/" + fixture])
-    print("PASS CPU-only CI; no browser/runtime/model/media rendering verified", flush=True)
+    print("PASS CPU contracts, isolated CLI/MCP and synthetic media checks; no browser, live model/GPU or finished-film quality verified", flush=True)
 
 
 if __name__ == "__main__":

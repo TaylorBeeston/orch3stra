@@ -46,6 +46,25 @@ Then open <http://127.0.0.1:8765/>.
 
 If you only want to edit, without starting a renderer, run `node bridge.mjs` instead.
 
+## Agent-driven filmmaking
+
+Start with [`.agents/skills/make-film/SKILL.md`](.agents/skills/make-film/SKILL.md). It teaches an agent the actual production workflow: original story and cast, image-first look development, bounded shot calibration, continuity and listening review, take selection, Post, captions, export and backups. The [executable recipe](.agents/skills/make-film/references/recipe.md) authors an original three-shot film plan without inference, then shows the separately authorized production continuation.
+
+With the studio running, use the dependency-free Node 22+ CLI:
+
+```sh
+node orch3stra.mjs doctor
+node orch3stra.mjs tools
+node orch3stra.mjs describe timeline
+node orch3stra.mjs call project --json '{"action":"create","name":"My original film","request":"A short original film about an unexpected act of kindness."}'
+```
+
+`describe` exposes each tool's JSON schema, effects and examples. `call` accepts inline JSON, `@file`, or `-` for stdin. The same tools are available over MCP with `node orch3stra.mjs mcp`; [connection instructions](.agents/skills/make-film/references/operations.md) generate a host configuration using the actual Node executable and checkout path. MCP also serves the filmmaking skill as resources and a `make_film` prompt.
+
+The interface covers project/story/cast/timeline authoring, references and native media preparation, planner requests, reference automation, rendering and recovery, voice/sound/speech tools, Post and exports. Existing projects must first be published to Studio. Mutations require the latest server revision; browser drafts are separate and pull explicitly. Expensive/external/destructive actions require explicit per-call scopes, and image-model license acknowledgement remains separate. Scopes are agent admission checks, not an OS sandbox or an enforced spending budget. Unknown submission outcomes are never automatically replayed; actual media must be reviewed before calling a film finished.
+
+For isolated real-app verification, see [`.agents/skills/verify-orch3stra/`](.agents/skills/verify-orch3stra/SKILL.md). Local checks include authenticated CLI/MCP authoring and backup downloads; modelled worker tests do not establish live-model output quality.
+
 ## Making your first video
 
 1. Open **Settings** (or click **Connect an AI planner →** under the brief). Pick a planner and its model, click **Connect & discover**, choose an **H3 Ref2VA** preset (the pruned 20B PDD-8 preset suits 16–24 GB GPUs), tick the confirmation box and **Save preferences**. Rendering is refused until a preset is confirmed.

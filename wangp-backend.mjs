@@ -2,9 +2,10 @@
 import {readFile,lstat,open} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 export class WanGPBackend {
-  constructor(dataDir,{mode=process.env.H3_WANGP_BACKEND||'legacy',headlessDir=process.env.H3_HEADLESS_DATA_DIR}={}){
+  constructor(dataDir,{mode=process.env.H3_WANGP_BACKEND||'legacy',headlessDir=process.env.H3_HEADLESS_DATA_DIR,legacyConnection=null}={}){
     if(!['legacy','headless'].includes(mode))throw Error('H3_WANGP_BACKEND must be legacy or headless.');
     this.mode=mode;this.directory=resolve(headlessDir||join(dataDir,'headless'));
+    this.legacyConnection=legacyConnection;
   }
   async target(url,token){
     if(this.mode==='headless'){
@@ -19,6 +20,8 @@ export class WanGPBackend {
         return {base:u.origin,token};
       }catch(e){throw Error('Headless WanGP is not configured/reachable. Run node start-headless.mjs. '+e.message);}
     }
+    if(!url&&this.legacyConnection){const configured=await this.legacyConnection();url=configured?.url;token=token||configured?.token;}
+    if(!url)throw Error('No legacy adapter URL is configured. Save wangpUrl in Studio credentials, or use the managed headless runtime.');
     const u=new URL(url);
     if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash)throw Error('Invalid legacy adapter URL.');
     return {base:u.href.replace(/\/+$/,''),token:token||process.env.H3_WANGP_TOKEN||''};
