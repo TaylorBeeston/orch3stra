@@ -72,6 +72,47 @@ The Codex model picker loads the live model catalog from your signed-in account 
 
 Each reference-image card is sent to WanGP as a single prompt (`multi_prompts_gen_type: "FG"`), so multi-paragraph prompts are not split into separate generations. If an image run stopped with WanGP's paragraph-splitting error, open **Fill references**, choose the stopped run and click **Retry image as one prompt**. It retries only that image with a new request ID, keeps completed windows, accepted pictures and spent allowances, and does not repeat the AI planning call. The new image counts against the image budget.
 
+## Set plates: a new angle of the same place
+
+A set plate is a new still of a location you already have (or a character in it), seen from another camera position, for example "same marble hall, reverse angle, the entrance door now behind the camera". It is made by editing the existing still(s) with an image-editing preset through the same headless WanGP worker and queue as other reference images, then saved as a normal reference asset you can attach to windows.
+
+**In the editor:** References → **Subjects & files** → on an image file choose **New angle (set plate)**. Image studio opens with one card that uses that file as `<image1>`, a keep-the-same-room prompt and a canvas matching the source's shape. Rewrite the camera instruction, discover presets, choose **Qwen Image 2.1**, review the licence and click **Generate checked pictures**. **Use this image** saves the result in the library; attach it in **Window settings** → direct references. Nothing is generated before that confirmation.
+
+**From an agent** (`node orch3stra.mjs reference editImage`, MCP tool `reference_edit`):
+
+```sh
+# 1. Build and validate the exact worker request; uploads, saves and submits nothing.
+node orch3stra.mjs reference editImage --allow network --json '{
+  "projectId": "PROJECT_ID",
+  "sourceImage": "SOURCE_ASSET_ID",
+  "prompt": "same marble hall, reverse angle, the entrance door now behind the camera",
+  "seed": 7,
+  "dryRun": true
+}'
+
+# 2. After explicit GPU approval: render, adopt and attach to a window.
+node orch3stra.mjs reference editImage --allow network,cpu,gpu --json '{
+  "projectId": "PROJECT_ID",
+  "sourceImages": ["SOURCE_ASSET_ID", "./hall-detail.png"],
+  "prompt": "same marble hall, reverse angle, the entrance door now behind the camera",
+  "seed": 7,
+  "windowIds": ["WINDOW_ID"],
+  "licenseAccepted": true
+}'
+```
+
+Fields: `sourceImage` or `sourceImages` (1–10, in `<image1>…` order) are image asset IDs of the project or local PNG/JPEG/WebP files (files are uploaded and registered first); `prompt` is the camera instruction (wrapped in a keep-the-same-room template unless it already uses `<imageN>` tokens or `literalPrompt` is true); `model` (default `qwen_image_21_7B`); `seed` (default -1); `width`/`height` (multiples of 32, 256–2048; default: the first source's aspect at 1024 px on the long edge); `steps`, `guidance` or a discovered `accelerationProfile` such as `viggle-turbo-v0.2.1-6step`; `windowIds`, `subjectId`, `title`, `requestId`; `wait` (default true) and `timeoutMs` (default 30 minutes). `licenseAccepted: true` acknowledges the model licence for this request (Qwen Image 2.1: Qwen Research License) and is never saved.
+
+A completed run returns `assetId`, `pictureToken` (`<Picture N>`), `mediaUrl` (download with `node orch3stra.mjs download URL --output FILE`) and `attachedWindowIds`. It composes existing steps: `references register` for files, `references planImages` (one card), `generation prepareImages`, one worker `POST /generate`, `wait worker` and `references adoptImage` (with `attachWindows` when `windowIds` is given). The job queues behind any render already running. With `wait:false`, or when the wait deadline passes, it returns the job ID and the exact `wait` and `adoptImage` follow-ups; never run the edit again for the same job. A lost dispatch reply returns `OUTCOME_UNKNOWN` with the request ID to reconcile (`worker` `GET /requests/<requestId>`).
+
+To attach an existing set plate to more windows, use `references assign` with the window's **complete** image selection, since assign replaces the direct image list:
+
+```sh
+node orch3stra.mjs call references --json '{"action":"assign","projectId":"PROJECT_ID","expectedRevision":REV,"windowId":"WINDOW_ID","assetIds":["EXISTING_IMAGE_ID","SET_PLATE_ASSET_ID"]}'
+```
+
+Models: `qwen_image_21_7B` (Qwen Image 2.1 7B, up to 10 ordered input images) is the default and the editing model the worker accepts. Krea 2 `*_edit` presets take 2 inputs. Text-only presets are refused rather than dropping inputs. The older 20B Qwen Image Edit presets are not worker reference presets.
+
 ## Upgrading safely
 
 Update the checkout while nothing is rendering: let renders and AI requests finish (or park them), pause managed dispatch, export project backups, then stop the editor. Changes to the Node editor only need the editor restarted (`node start-headless.mjs`). Changes to the Python worker need `node start-headless.mjs --stop` (it refuses while rendering) and then `node start-headless.mjs`; the footer and `--status` show the running worker version. With systemd user services, restart `h3-director.service` for editor changes and `h3-wangp.service` for worker changes, and regenerate the units with `node scripts/install-services.mjs --install` if paths changed. Never run two editors on the same data directory. See [UPGRADING.md](UPGRADING.md) for backups, rollback and footage recovery.
