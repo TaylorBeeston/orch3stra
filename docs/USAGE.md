@@ -113,6 +113,28 @@ node orch3stra.mjs call references --json '{"action":"assign","projectId":"PROJE
 
 Models: `qwen_image_21_7B` (Qwen Image 2.1 7B, up to 10 ordered input images) is the default and the editing model the worker accepts. Krea 2 `*_edit` presets take 2 inputs. Text-only presets are refused rather than dropping inputs. The older 20B Qwen Image Edit presets are not worker reference presets.
 
+### Camera LoRA (opt-in): Multiple-Angles
+
+`multiAngleLora: true` stacks [akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA](https://huggingface.co/akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA) (v2, step 1,500, rank 64, Apache-2.0, base Qwen-Image-2.1) on top of any Viggle profile. The worker adds it by allowlisted id (`multiple-angles-v2`); clients never send LoRA paths. The file must already be in WanGP's `loras/qwen21/` folder (`angles_v2_full_qwen21_multiple_angles_v2_qwen21_multiple_angles_v2_000001500.safetensors`, 319 MB). Discovery reports it as `profile.camera_loras[].installed`. A worker or bridge that predates this support refuses with `LORA_UNAVAILABLE` before any upload, so restart the idle bridge and worker after upgrading. Dry runs still build the request and report `multiAngleLora.warning`.
+
+The LoRA was trained on the caption `<mva> {azimuth}, {elevation}[ close-up]`. Pass `cameraView` and it is prepended to the set-plate prompt:
+
+- azimuth (camera orbit, 30° steps): `front view`, `front-right view`, `front-right quarter view`, `right side view`, `back-right quarter view`, `back-right view`, `back view`, `back-left view`, `back-left quarter view`, `left side view`, `front-left quarter view`, `front-left view`
+- elevation: `eye-level shot`, `elevated shot`, `high-angle shot`, `top-down shot`
+- add ` close-up` for a tighter (about 62%) crop. Exact degrees are not parsed; use the labels.
+
+```sh
+node orch3stra.mjs reference editImage --allow network --json '{
+  "projectId": "PROJECT_ID", "sourceImage": "SOURCE_ASSET_ID",
+  "prompt": "reverse angle, the entrance door now behind the camera",
+  "cameraView": "back view, eye-level shot",
+  "multiAngleLora": true, "multiAngleLoraStrength": 1.0,
+  "dryRun": true
+}'
+```
+
+A reverse angle is `back view, eye-level shot`; a side angle is `right side view` or `left side view`; an overhead plate is `top-down shot`. With `literalPrompt: true`, write the prompt yourself and start it with `<mva> …`. The card recommends a strength of 0.8–1.0 (the default is 1.0). Lower it toward 0.8 if the result copies the source view instead of moving the camera. The LoRA was trained on Objaverse objects at 512², so rooms and large canvases are outside its training data. Check results by eye; it stays opt-in until set-plate A/B tests justify a default.
+
 ## Upgrading safely
 
 Update the checkout while nothing is rendering: let renders and AI requests finish (or park them), pause managed dispatch, export project backups, then stop the editor. Changes to the Node editor only need the editor restarted (`node start-headless.mjs`). Changes to the Python worker need `node start-headless.mjs --stop` (it refuses while rendering) and then `node start-headless.mjs`; the footer and `--status` show the running worker version. With systemd user services, restart `h3-director.service` for editor changes and `h3-wangp.service` for worker changes, and regenerate the units with `node scripts/install-services.mjs --install` if paths changed. Never run two editors on the same data directory. See [UPGRADING.md](UPGRADING.md) for backups, rollback and footage recovery.
