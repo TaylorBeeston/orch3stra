@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from PIL import Image
 from headless.engine import HeadlessEngine
-from headless.reference_images import ARCHITECTURE
+from headless.reference_images import ARCHITECTURE, CAMERA_LORAS, VIGGLE_PROFILES
 
 ROOT = Path(__file__).resolve().parents[1]
 NODE = os.environ.get('NODE_BIN') or shutil.which('node')
@@ -21,9 +21,9 @@ import {createRequire} from 'node:module';
 const R=createRequire(import.meta.url)('./reference-core.js');
 const input=JSON.parse(process.argv[1]);
 const project={id:'film',name:'Marble Hall',windows:[],subjects:[],assets:input.assets};
-const card={...R.parsePlan(JSON.stringify({images:[{title:'Set plate',prompt:R.setPlatePrompt(input.prompt,input.assets.length),referenceIds:input.assets.map(a=>a.id)}]}),project).images[0]};
+const card={...R.parsePlan(JSON.stringify({images:[{title:'Set plate',prompt:R.setPlatePrompt(input.prompt,input.assets.length,{cameraView:input.cameraView}),referenceIds:input.assets.map(a=>a.id)}]}),project).images[0]};
 const uploaded=Object.fromEntries(input.assets.map((a,i)=>[a.id,input.media[i]]));
-const {request}=buildSetPlateRequest({project,card,info:input.info,model:input.model,requestId:'set_plate_py',resolution:R.setPlateResolution(input.assets[0],input.size||{}),seed:7,accelerationProfile:input.acceleration,uploaded});
+const {request}=buildSetPlateRequest({project,card,info:input.info,model:input.model,requestId:'set_plate_py',resolution:R.setPlateResolution(input.assets[0],input.size||{}),seed:7,accelerationProfile:input.acceleration,cameraLora:input.cameraLora,cameraLoraStrength:input.cameraLoraStrength,uploaded});
 process.stdout.write(JSON.stringify(request));
 """
 
@@ -37,6 +37,17 @@ class Session:
     def list_model_defs(self, **kwargs): return [{'model_type': kwargs['model_type'], 'model': {'architecture': self.defs.get(kwargs['model_type'], kwargs['model_type'])}}]
     def get_default_settings(self, _): return {'num_inference_steps': 40, 'guidance_scale': 4, 'image_mode': 1}
     def get_model_schema(self, _): return {'fields': []}
+    installed = True
+    def list_loras(self, model_type, name=None):
+        # WanGP's setup_loras lists absolute paths under loras/qwen21.
+        files = ['Qwen-Image-2.1-viggle-turbo-v0.2.1-6step-lora-r256.safetensors'] + ([CAMERA_LORAS['multiple-angles-v2']['lora'].rsplit('/', 1)[-1]] if self.installed else [])
+        return {'model_type': model_type, 'supported': True, 'loras': ['/wangp/loras/qwen21/' + f for f in files if name is None or f == name]}
+    VIGGLE = 'accelerator_profile:qwen21/Viggle Turbo v0.2.1 6 Steps.json'
+    def get_model_settings(self, model_type, setting_id=None, include_selection=False):
+        if setting_id is None:
+            return {'settings': [{'id': self.VIGGLE, 'type': 'accelerator profile'}]}
+        return {'content': {'model_type': model_type, 'sample_solver': 'viggle_v02', 'num_inference_steps': 6, 'guidance_scale': 1,
+                            'activated_loras': [VIGGLE_PROFILES[self.VIGGLE]['lora']], 'loras_multipliers': '1'}}
 
 
 @unittest.skipUnless(NODE, 'Node is required to build the client request')
@@ -83,6 +94,52 @@ class SetPlateRequest(unittest.TestCase):
     def test_requested_small_size(self):
         request, _ = self.build(size={'width': 512, 'height': 288})
         self.assertEqual(self.e.resolve_task(request['body']['tasks'][0])['resolution'], '512x288')
+
+    def test_multi_angle_lora_is_discovered_and_stacked_after_viggle(self):
+        url = CAMERA_LORAS['multiple-angles-v2']['lora']
+        request, _ = self.build(size={'width': 288, 'height': 512}, acceleration='viggle-turbo-v0.2.1-6step', cameraView='back view, eye-level shot', cameraLora='multiple-angles-v2', cameraLoraStrength=0.9)
+        info = self.e.reference_model_info(ARCHITECTURE)
+        self.assertEqual([(r['id'], r['installed'], r['trigger']) for r in info['profile']['camera_loras']], [('multiple-angles-v2', True, '<mva>')])
+        task = request['body']['tasks'][0]
+        self.assertNotIn('safetensors', json.dumps(task), 'client sends an allowlisted id only')
+        resolved = self.e.resolve_task(task)
+        self.assertTrue(resolved['prompt'].startswith('<mva> back view, eye-level shot\nSame location as <image1>.'))
+        self.assertEqual(resolved['activated_loras'], [VIGGLE_PROFILES[Session.VIGGLE]['lora'], url])
+        self.assertEqual(resolved['loras_multipliers'], '1 0.9')
+        self.assertEqual((resolved['sample_solver'], resolved['num_inference_steps'], resolved['resolution']), ('viggle_v02', 6, '288x512'))
+        self.assertEqual(self.e.submit(request['body'])['status'], 'queued')
+
+    def test_multi_angle_lora_alone_and_refusals(self):
+        url = CAMERA_LORAS['multiple-angles-v2']['lora']
+        request, _ = self.build(cameraView='back view, eye-level shot', cameraLora='multiple-angles-v2', cameraLoraStrength=1)
+        task = request['body']['tasks'][0]
+        resolved = self.e.resolve_task(task)
+        self.assertEqual((resolved['activated_loras'], resolved['loras_multipliers'], resolved['sample_solver']), ([url], '1', 'default'))
+        for change, message in (({'camera_lora': 'made-up'}, 'Unknown camera LoRA'),
+                                ({'camera_lora_strength': 0}, 'strength'),
+                                ({'camera_lora_strength': 2.5}, 'strength'),
+                                ({'prompt': task['prompt'].replace('<mva> ', '')}, 'trigger'),
+                                ({'camera_lora': '', 'camera_lora_strength': 1}, 'needs camera_lora')):
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, message):
+                self.e.resolve_task({**task, **change})
+        plain, _ = self.build()
+        self.assertNotIn('activated_loras', self.e.resolve_task(plain['body']['tasks'][0]), 'no LoRA unless requested')
+
+    def test_multi_angle_lora_must_be_installed(self):
+        Session.installed = False
+        try:
+            e = HeadlessEngine(self.root/'other', session=Session(), start_dispatcher=False)
+            try:
+                self.assertFalse(e.reference_model_info(ARCHITECTURE)['profile']['camera_loras'][0]['installed'])
+                path = e.root/'uploads'/'hall.png'; Image.new('RGB', (96, 54)).save(path)
+                media = e.register_upload(path, 'hall.png', 'image/png')['media_id']
+                task = {'mode': 'reference_image', 'model_type': ARCHITECTURE, 'license_accepted': True, 'prompt': '<mva> back view, eye-level shot', 'image_refs': [media], 'camera_lora': 'multiple-angles-v2'}
+                with self.assertRaisesRegex(ValueError, 'not installed'):
+                    e.resolve_task(task)
+            finally:
+                e.close()
+        finally:
+            Session.installed = True
 
     def test_legacy_qwen_edit_20b_is_not_a_worker_preset(self):
         with self.assertRaisesRegex(ValueError, 'Qwen Image 2.1 and Krea 2 presets only'):

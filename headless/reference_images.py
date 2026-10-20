@@ -38,6 +38,18 @@ VIGGLE_PROFILES = {
 }
 
 
+# Allowlisted camera-control LoRAs. Clients name an id, never a path or URL; the
+# file must already be installed in WanGP's qwen21 LoRA directory (no downloads).
+CAMERA_LORAS = {
+    'multiple-angles-v2': {
+        'name': 'Qwen-Image-2.1 Multiple-Angles v2 (step 1500, rank 64)',
+        'lora': 'https://huggingface.co/akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA/resolve/main/checkpoints_v2/angles_v2_full_qwen21_multiple_angles_v2_qwen21_multiple_angles_v2_000001500.safetensors',
+        'trigger': '<mva>', 'default_strength': 1.0, 'license': 'Apache-2.0',
+        'prompt_format': '<mva> {azimuth}, {elevation}[ close-up]',
+    },
+}
+
+
 def architectures(value):
     found = set()
     if isinstance(value, dict):
@@ -139,6 +151,23 @@ class ReferenceImageSupport:
             }
         return public, native
 
+    def _discover_camera_loras(self, model_type):
+        lister = getattr(self.session, 'list_loras', None)
+        found = []
+        for lora_id, spec in CAMERA_LORAS.items():
+            name = spec['lora'].rsplit('/', 1)[-1]
+            installed = False
+            if callable(lister):
+                try:
+                    listing = lister(model_type, name=name)
+                    installed = any(str(x).replace('\\', '/').rsplit('/', 1)[-1] == name for x in (listing or {}).get('loras', []))
+                except Exception:
+                    installed = False
+            found.append({'id': lora_id, 'name': spec['name'], 'trigger': spec['trigger'],
+                          'prompt_format': spec['prompt_format'], 'default_strength': spec['default_strength'],
+                          'license': spec['license'], 'installed': installed})
+        return found
+
     def reference_model_info(self, model_type):
         if not isinstance(model_type, str) or not model_type:
             raise ValueError('Discover and select an image preset first.')
@@ -164,6 +193,7 @@ class ReferenceImageSupport:
             getter = getattr(self.session, 'get_exported_default_settings', None) or self.session.get_default_settings
             defaults = getter(model_type)
             image_profiles, profile_settings = self._discover_viggle_profiles(model_type) if is_qwen else ([], {})
+            camera_loras = self._discover_camera_loras(model_type) if is_qwen else []
             if not hasattr(self, '_reference_image_profile_settings'):
                 self._reference_image_profile_settings = {}
             self._reference_image_profile_settings[model_type] = profile_settings
@@ -172,7 +202,8 @@ class ReferenceImageSupport:
                        'default_steps': default_steps, 'default_guidance': default_guidance,
                        'license': 'Qwen Research License' if is_qwen else 'See the installed Krea model license',
                        'reference_order': 'Ordered <imageN> sources' if is_qwen else
-                           ('Up to two inputs. Scene first, subject second when preserving a scene; otherwise ordered identity inputs.' if max_refs else 'Text-to-image only; input references are not accepted.')}
+                           ('Up to two inputs. Scene first, subject second when preserving a scene; otherwise ordered identity inputs.' if max_refs else 'Text-to-image only; input references are not accepted.'),
+                       'camera_loras': camera_loras}
             info = {'metadata': {**meta, 'image_profile': profile}, 'defaults': defaults,
                     'schema': self.session.get_model_schema(model_type),
                     'image_profiles': image_profiles, 'profile': profile}
@@ -239,4 +270,22 @@ class ReferenceImageSupport:
                     'custom_settings': ({'qwen21_kv_cache': 'Disabled', 'rgba': 'Disabled'} if is_qwen else {})}
         if native_profile:
             resolved.update({key: copy.deepcopy(native_profile[key]) for key in ('sample_solver', 'activated_loras', 'loras_multipliers')})
+        camera = task.get('camera_lora', '')
+        if camera:
+            entry = next((row for row in profile.get('camera_loras', []) if row.get('id') == camera), None)
+            if not is_qwen or entry is None:
+                raise ValueError('Unknown camera LoRA for this image model.')
+            if not entry.get('installed'):
+                raise ValueError('The camera LoRA is not installed in WanGP\'s qwen21 LoRA folder. Install it, restart the idle worker and rediscover.')
+            strength = task.get('camera_lora_strength', entry['default_strength'])
+            if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not math.isfinite(strength) or not 0 < strength <= 2:
+                raise ValueError('Camera LoRA strength must be greater than 0 and at most 2.')
+            if entry['trigger'] not in prompt:
+                raise ValueError('Prompts for this camera LoRA must contain its trigger ' + entry['trigger'] + '.')
+            loras = list(resolved.get('activated_loras') or [])
+            mults = str(resolved.get('loras_multipliers') or '').split() if loras else []
+            resolved['activated_loras'] = loras + [CAMERA_LORAS[camera]['lora']]
+            resolved['loras_multipliers'] = ' '.join(mults + [format(float(strength), 'g')])
+        elif task.get('camera_lora_strength') is not None:
+            raise ValueError('camera_lora_strength needs camera_lora.')
         return resolved
