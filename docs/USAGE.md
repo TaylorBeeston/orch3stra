@@ -111,9 +111,32 @@ To attach an existing set plate to more windows, use `references assign` with th
 node orch3stra.mjs call references --json '{"action":"assign","projectId":"PROJECT_ID","expectedRevision":REV,"windowId":"WINDOW_ID","assetIds":["EXISTING_IMAGE_ID","SET_PLATE_ASSET_ID"]}'
 ```
 
-Models: `qwen_image_21_7B` (Qwen Image 2.1 7B, up to 10 ordered input images) is the default and the editing model the worker accepts. Krea 2 `*_edit` presets take 2 inputs. Text-only presets are refused rather than dropping inputs. The older 20B Qwen Image Edit presets are not worker reference presets.
+Models: `qwen_image_21_7B` (Qwen Image 2.1 7B, up to 10 ordered input images) is the default. `qwen_image_edit_plus2_20B` (Qwen Image Edit 2511, 20B, Apache-2.0, up to 3 inputs; the first is the image edited, no `<imageN>` tokens; 30 steps, guidance 4) is accepted too, with its own set-plate template and camera LoRA (below). WanGP downloads it as `ckpts/qwen_image_edit_plus2_20B_quanto_bf16_int8.safetensors` (20.5 GB) plus the Qwen2.5-VL-7B int8 text encoder (9.4 GB). Krea 2 `*_edit` presets take 2 inputs. Text-only presets are refused rather than dropping inputs. The older 20B Qwen Image Edit (2508/2509) presets are not worker reference presets.
 
 ### Camera LoRA (opt-in): Multiple-Angles
+
+`multiAngleLora: true` picks the LoRA trained for the selected model; each is offered only on its own base model.
+
+#### Qwen Image Edit 2511: `multiple-angles-2511`
+
+[fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA](https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA) (Apache-2.0, 96 poses, trained on 3,000+ Gaussian-splat renders) must be in WanGP's `loras/qwen/` as `qwen-image-edit-2511-multiple-angles-lora.safetensors` (295 MB). Default strength 0.9 (the card suggests 0.8–1.0). Its caption is `<sks> {azimuth} {elevation} {distance}`; `cameraView` takes the same words and is prepended:
+
+- azimuth (45° steps): `front view`, `front-right quarter view`, `right side view`, `back-right quarter view`, `back view`, `back-left quarter view`, `left side view`, `front-left quarter view`
+- elevation: `low-angle shot` (-30°), `eye-level shot` (default), `elevated shot` (30°), `high-angle shot` (60°)
+- distance: `close-up`, `medium shot` (default), `wide shot`
+
+The card's annotated form (`left side view (270°) eye-level shot (0°) close-up (×0.6)`) is accepted and normalised. A reverse angle is `back view eye-level shot medium shot`.
+
+```sh
+node orch3stra.mjs reference editImage --allow network --json '{
+  "projectId": "PROJECT_ID", "sourceImage": "SOURCE_ASSET_ID", "model": "qwen_image_edit_plus2_20B",
+  "prompt": "reverse angle, the entrance door now behind the camera",
+  "cameraView": "back view eye-level shot medium shot", "multiAngleLora": true,
+  "width": 512, "height": 896, "dryRun": true
+}'
+```
+
+#### Qwen Image 2.1: `multiple-angles-v2`
 
 `multiAngleLora: true` stacks [akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA](https://huggingface.co/akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA) (v2, step 1,500, rank 64, Apache-2.0, base Qwen-Image-2.1) on top of any Viggle profile. The worker adds it by allowlisted id (`multiple-angles-v2`); clients never send LoRA paths. The file must already be in WanGP's `loras/qwen21/` folder (`angles_v2_full_qwen21_multiple_angles_v2_qwen21_multiple_angles_v2_000001500.safetensors`, 319 MB). Discovery reports it as `profile.camera_loras[].installed`. A worker or bridge that predates this support refuses with `LORA_UNAVAILABLE` before any upload, so restart the idle bridge and worker after upgrading. Dry runs still build the request and report `multiAngleLora.warning`.
 
