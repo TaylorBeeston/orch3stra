@@ -18,7 +18,10 @@ KREA_PROFILES = {
     'krea2_raw_edit': (2, 20, 2.0),
     'krea2_turbo_edit': (2, 8, 0.0),
 }
-SUPPORTED_ARCHITECTURES = {ARCHITECTURE, *KREA_PROFILES}
+# Qwen Image Edit Plus (2511) 20B: native multi-image editing with built-in camera changes.
+# (max inputs, default steps, guidance); 30 steps / CFG 4 match WanGP defaults and the user's past runs.
+QWEN_EDIT_PROFILES = {'qwen_image_edit_plus2_20B': (3, 30, 4.0)}
+SUPPORTED_ARCHITECTURES = {ARCHITECTURE, *KREA_PROFILES, *QWEN_EDIT_PROFILES}
 
 IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.avif'}
 
@@ -46,6 +49,14 @@ CAMERA_LORAS = {
         'lora': 'https://huggingface.co/akhaliq/Qwen-Image-2.1-Multiple-Angles-LoRA/resolve/main/checkpoints_v2/angles_v2_full_qwen21_multiple_angles_v2_qwen21_multiple_angles_v2_000001500.safetensors',
         'trigger': '<mva>', 'default_strength': 1.0, 'license': 'Apache-2.0',
         'prompt_format': '<mva> {azimuth}, {elevation}[ close-up]',
+        'architectures': [ARCHITECTURE],
+    },
+    'multiple-angles-2511': {
+        'name': 'Qwen-Image-Edit-2511 Multiple-Angles (fal, 96 poses)',
+        'lora': 'https://huggingface.co/fal/Qwen-Image-Edit-2511-Multiple-Angles-LoRA/resolve/main/qwen-image-edit-2511-multiple-angles-lora.safetensors',
+        'trigger': '<sks>', 'default_strength': 0.9, 'license': 'Apache-2.0',
+        'prompt_format': '<sks> {azimuth} {elevation} {distance}',
+        'architectures': ['qwen_image_edit_plus2_20B'],
     },
 }
 
@@ -154,7 +165,10 @@ class ReferenceImageSupport:
     def _discover_camera_loras(self, model_type):
         lister = getattr(self.session, 'list_loras', None)
         found = []
+        arch = getattr(self, '_camera_arch', ARCHITECTURE)
         for lora_id, spec in CAMERA_LORAS.items():
+            if arch not in spec.get('architectures', [ARCHITECTURE]):
+                continue
             name = spec['lora'].rsplit('/', 1)[-1]
             installed = False
             if callable(lister):
@@ -183,25 +197,27 @@ class ReferenceImageSupport:
             defs = self.session.list_model_defs(model_type=model_type)
             found = architectures([meta, defs]) & SUPPORTED_ARCHITECTURES
             if not meta or not found:
-                raise ValueError('This operation accepts native Qwen Image 2.1 and Krea 2 presets only. Update WanGP and rediscover its image presets.')
+                raise ValueError('This operation accepts native Qwen Image 2.1, Qwen Image Edit 2511 and Krea 2 presets only. Update WanGP and rediscover its image presets.')
             arch = model_type if model_type in found else next((a for a in KREA_PROFILES if a in found), ARCHITECTURE)
             is_qwen = arch == ARCHITECTURE
-            max_refs, default_steps, default_guidance = (10, 40, 4.0) if is_qwen else KREA_PROFILES[arch]
+            is_edit = arch in QWEN_EDIT_PROFILES
+            max_refs, default_steps, default_guidance = (10, 40, 4.0) if is_qwen else QWEN_EDIT_PROFILES[arch] if is_edit else KREA_PROFILES[arch]
             # Refuse a misleading child variant with a different sampler contract.
             if is_qwen and 'turbo' in (model_type + ' ' + str(meta.get('name', ''))).lower():
                 raise ValueError('Choose the standard Qwen Image 2.1 preset, not a distilled/Turbo variant.')
             getter = getattr(self.session, 'get_exported_default_settings', None) or self.session.get_default_settings
             defaults = getter(model_type)
             image_profiles, profile_settings = self._discover_viggle_profiles(model_type) if is_qwen else ([], {})
-            camera_loras = self._discover_camera_loras(model_type) if is_qwen else []
+            self._camera_arch = arch
+            camera_loras = self._discover_camera_loras(model_type) if (is_qwen or is_edit) else []
             if not hasattr(self, '_reference_image_profile_settings'):
                 self._reference_image_profile_settings = {}
             self._reference_image_profile_settings[model_type] = profile_settings
             profile = {'kind': 'reference_image', 'max_references': max_refs,
                        'supports_reference_images': max_refs > 0, 'architecture': arch,
                        'default_steps': default_steps, 'default_guidance': default_guidance,
-                       'license': 'Qwen Research License' if is_qwen else 'See the installed Krea model license',
-                       'reference_order': 'Ordered <imageN> sources' if is_qwen else
+                       'license': 'Qwen Research License' if is_qwen else 'Apache-2.0 (Qwen-Image-Edit-2511)' if is_edit else 'See the installed Krea model license',
+                       'reference_order': 'Ordered <imageN> sources' if is_qwen else 'Up to three ordered inputs; the first is the image to edit.' if is_edit else
                            ('Up to two inputs. Scene first, subject second when preserving a scene; otherwise ordered identity inputs.' if max_refs else 'Text-to-image only; input references are not accepted.'),
                        'camera_loras': camera_loras}
             info = {'metadata': {**meta, 'image_profile': profile}, 'defaults': defaults,
@@ -215,6 +231,7 @@ class ReferenceImageSupport:
         info = self.reference_model_info(task.get('model_type'))
         profile = info['profile']
         is_qwen = profile['architecture'] == ARCHITECTURE
+        is_edit = profile['architecture'] in QWEN_EDIT_PROFILES
         if task.get('license_accepted') is not True:
             raise ValueError('Review and accept the selected image model license before generating.')
         prompt = task.get('prompt')
@@ -243,7 +260,7 @@ class ReferenceImageSupport:
             raise ValueError('Image seed must be -1 or a 31-bit integer.')
         refs = task.get('image_refs', [])
         if not isinstance(refs, list) or len(refs) > profile['max_references'] or any(not isinstance(x, str) for x in refs) or len(set(refs)) != len(refs):
-            raise ValueError('Choose up to ten distinct uploaded image references.' if is_qwen else f"This Krea preset accepts at most {profile['max_references']} distinct references. Choose an Edit preset for character anchors; references are never dropped.")
+            raise ValueError('Choose up to ten distinct uploaded image references.' if is_qwen else f"This Qwen Image Edit preset accepts at most {profile['max_references']} distinct references." if is_edit else f"This Krea preset accepts at most {profile['max_references']} distinct references. Choose an Edit preset for character anchors; references are never dropped.")
         paths = []
         for key in refs:
             media = self.media.get(key)
@@ -256,7 +273,7 @@ class ReferenceImageSupport:
             raise ValueError('An <imageN> token refers to a missing input. Check image order.')
         # Client task fields never supply LoRA paths. A named profile is resolved
         # from WanGP's own exported accelerator profile and filtered at discovery.
-        resolved = {'model_type': task['model_type'], 'image_mode': (1 if is_qwen else (0 if profile['max_references'] else 2)), 'prompt': prompt,
+        resolved = {'model_type': task['model_type'], 'image_mode': (1 if (is_qwen or is_edit) else (0 if profile['max_references'] else 2)), 'prompt': prompt,
                     'resolution': resolution, 'num_inference_steps': steps,
                     'guidance_scale': float(guidance), 'sample_solver': 'default',
                     'guidance_phases': 1, 'seed': seed, 'batch_size': 1,
@@ -265,7 +282,7 @@ class ReferenceImageSupport:
                     'multi_prompts_gen_type': 'FG',
                     'repeat_generation': 1, 'prompt_enhancer': '',
                     'image_refs': paths, 'image_prompt_type': '',
-                    'video_prompt_type': (('KI' if not is_qwen and task.get('preserve_first_scene') is True else 'I') if paths else ''), 'audio_prompt_type': '',
+                    'video_prompt_type': (('KI' if not is_qwen and not is_edit and task.get('preserve_first_scene') is True else 'I') if paths else ''), 'audio_prompt_type': '',
                     'remove_background_images_ref': 0, 'denoising_strength': 1.0,
                     'custom_settings': ({'qwen21_kv_cache': 'Disabled', 'rgba': 'Disabled'} if is_qwen else {})}
         if native_profile:
@@ -273,10 +290,10 @@ class ReferenceImageSupport:
         camera = task.get('camera_lora', '')
         if camera:
             entry = next((row for row in profile.get('camera_loras', []) if row.get('id') == camera), None)
-            if not is_qwen or entry is None:
+            if not (is_qwen or is_edit) or entry is None:
                 raise ValueError('Unknown camera LoRA for this image model.')
             if not entry.get('installed'):
-                raise ValueError('The camera LoRA is not installed in WanGP\'s qwen21 LoRA folder. Install it, restart the idle worker and rediscover.')
+                raise ValueError('The camera LoRA is not installed in WanGP\'s LoRA folder for this model. Install it, restart the idle worker and rediscover.')
             strength = task.get('camera_lora_strength', entry['default_strength'])
             if isinstance(strength, bool) or not isinstance(strength, (int, float)) or not math.isfinite(strength) or not 0 < strength <= 2:
                 raise ValueError('Camera LoRA strength must be greater than 0 and at most 2.')
