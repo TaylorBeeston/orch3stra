@@ -77,5 +77,30 @@ function reorderReferences(card,next){
  const old=card.referenceIds;for(const m of card.prompt.matchAll(/<image(\d+)>/g)){const id=old[Number(m[1])-1];if(id&&!next.includes(id))throw Error('The prompt still refers to the image you are removing. Edit that instruction first.');}
  card.prompt=card.prompt.replace(/<image(\d+)>/g,(token,n)=>{const id=old[Number(n)-1],i=next.indexOf(id);return i<0?token:`<image${i+1}>`;});card.referenceIds=[...next];return card;
 }
-return{imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
+// Set plates: a new camera angle of the SAME place, edited from existing stills with
+// an image-editing preset (Qwen Image 2.1 takes up to ten ordered <imageN> inputs).
+const SET_PLATE_MODEL='qwen_image_21_7B';
+function setPlatePrompt(instruction,count=1,{literal=false}={}){
+ const text=String(instruction||'').trim();
+ if(!text)throw Error('Describe the new camera angle, e.g. "reverse angle, the entrance door now behind the camera".');
+ if(!Number.isInteger(count)||count<1||count>10)throw Error('A set plate needs 1–10 source images.');
+ if(literal||/<image\d+>/.test(text)){
+  if([...text.matchAll(/<image(\d+)>/g)].some(m=>+m[1]<1||+m[1]>count))throw Error('The instruction refers to a missing <imageN> source.');
+  return text;
+ }
+ const others=count===1?'':count===2?' <image2> shows the same place or its subjects from another view.':` <image2> to <image${count}> show the same place or its subjects from other views.`;
+ return `Same location as <image1>.${others} New camera view: ${text}\nKeep it the same room as in the source image${count>1?'s':''}: identical architecture, layout, materials, colours, fixtures, props and lighting. Keep any people from the source${count>1?'s':''} consistent in identity and clothing. Change only the camera position, angle and framing described. One standalone photographic still, no collage, no added text.`;
+}
+function setPlateResolution(source,{width,height}={}){
+ const ok=n=>Number.isInteger(n)&&n>=256&&n<=2048&&n%32===0;
+ if(width!==undefined||height!==undefined){
+  if(!ok(width)||!ok(height))throw Error('Set-plate width and height must both be multiples of 32 from 256 to 2048.');
+  return width+'x'+height;
+ }
+ const w=Number(source?.width),h=Number(source?.height);
+ if(!(w>0&&h>0))return '1024x1024';
+ const fit=n=>Math.min(2048,Math.max(256,Math.round(n/32)*32));
+ return w>=h?`1024x${fit(1024*h/w)}`:`${fit(1024*w/h)}x1024`;
+}
+return{SET_PLATE_MODEL,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
 });
