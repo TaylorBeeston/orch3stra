@@ -45,10 +45,10 @@ export async function imageSize(path){
 function placeholder(assetId){return 'h3media:'+createHash('sha256').update('set-plate-dry-run:'+assetId).digest('hex').slice(0,32);}
 
 /** Pure request construction shared by dry runs and tests. Mirrors agent-media.mjs prepareImages. */
-export function buildSetPlateRequest({project,card,info,model,requestId,resolution,seed=-1,steps,guidance,accelerationProfile,uploaded}){
+export function buildSetPlateRequest({project,card,info,model,requestId,resolution,seed=-1,steps,guidance,accelerationProfile,cameraLora,cameraLoraStrength,uploaded}){
  const profile=info.profile,acceleration=accelerationProfile?info.image_profiles?.find(row=>row.id===accelerationProfile):null;
  if(accelerationProfile&&!acceleration)fail('INVALID_ARGUMENTS','accelerationProfile is not in the discovered profile list for '+model+'.',{available:(info.image_profiles||[]).map(p=>p.id)});
- const settings={modelType:model,resolution,seed,...(accelerationProfile?{accelerationProfile}:{}),steps:acceleration?.steps??steps??profile.default_steps,guidance:acceleration?.guidance??guidance??profile.default_guidance,imageProfile:profile,licenseAccepted:true};
+ const settings={modelType:model,resolution,seed,...(accelerationProfile?{accelerationProfile}:{}),...(cameraLora?{cameraLora,cameraLoraStrength}:{}),steps:acceleration?.steps??steps??profile.default_steps,guidance:acceleration?.guidance??guidance??profile.default_guidance,imageProfile:profile,licenseAccepted:true};
  const task=R.task(card,settings,uploaded);
  const body={request_id:requestId,project_id:project.id,project:project.name,tasks:[task],snapshot:{kind:'reference-images',cards:[H.clone(card)],settings:noConsent(settings)}};
  const request={path:'/generate',method:'POST',body};
@@ -89,15 +89,21 @@ export async function referenceEdit(client,args){
   const info=await call('generation',{action:'discover',family:'image',modelType:model});
   if(info.metadata?.model_type!==model||info.profile?.kind!=='reference_image')fail('MODEL_UNSUPPORTED','The worker does not expose '+model+' as a reference-image preset.');
   if(!(info.profile.max_references>=sources.length))fail('MODEL_UNSUPPORTED',model+' accepts '+(info.profile.max_references||0)+' input image(s); this edit has '+sources.length+'. Choose an editing preset such as '+DEFAULT_EDIT_MODEL+' (10 inputs) or a Krea 2 *_edit preset (2 inputs).');
-  const prompt=R.setPlatePrompt(args.prompt,sources.length,{literal:args.literalPrompt===true});
+  const lora=args.multiAngleLora===true;
+  if(args.multiAngleLoraStrength!==undefined&&!lora)fail('INVALID_ARGUMENTS','multiAngleLoraStrength needs multiAngleLora:true.');
+  if(lora&&!args.cameraView&&!String(args.prompt).includes(R.MULTI_ANGLE_TRIGGER))fail('INVALID_ARGUMENTS','multiAngleLora needs cameraView (e.g. "back view, eye-level shot") or a prompt containing '+R.MULTI_ANGLE_TRIGGER+'.');
+  const prompt=R.setPlatePrompt(args.prompt,sources.length,{literal:args.literalPrompt===true,cameraView:args.cameraView});
+  const cameraEntry=lora?(info.profile.camera_loras||[]).find(row=>row.id===R.MULTI_ANGLE_LORA):null;
+  const loraStatus=lora?{id:R.MULTI_ANGLE_LORA,strength:args.multiAngleLoraStrength??cameraEntry?.default_strength??1,installed:cameraEntry?.installed===true,reportedByWorker:!!cameraEntry}:null;
+  if(lora&&!dryRun&&!loraStatus.installed)fail('LORA_UNAVAILABLE',cameraEntry?'The worker reports the Multiple-Angles LoRA as not installed in WanGP loras/qwen21.':'The running worker predates camera-LoRA support (no profile.camera_loras). Restart the idle bridge and worker on code with this change, then retry.',{multiAngleLora:loraStatus});
   const resolution=R.setPlateResolution(resolved[0],{width:args.width,height:args.height});
-  const options={model,requestId,resolution,seed:args.seed??-1,steps:args.steps,guidance:args.guidance,accelerationProfile:args.accelerationProfile};
+  const options={model,requestId,resolution,seed:args.seed??-1,steps:args.steps,guidance:args.guidance,accelerationProfile:args.accelerationProfile,...(lora?{cameraLora:R.MULTI_ANGLE_LORA,cameraLoraStrength:loraStatus.strength}:{})};
   if(dryRun){
    const preview=H.clone(p),uploaded={};
    resolved.forEach((s,i)=>{if(s.kind==='file'){s.assetId='dry-run-source-'+(i+1);preview.assets.push({id:s.assetId,kind:'image',name:s.name,width:s.width,height:s.height,missing:false});}uploaded[s.assetId]=placeholder(s.assetId);});
    const card={...R.parsePlan(JSON.stringify({images:[cardFor(args,resolved.map(s=>s.assetId),prompt)]}),preview).images[0],id:'dry-run-card'};
    const built=buildSetPlateRequest({project:preview,card,info,...options,uploaded});
-   return{dryRun:true,submitted:false,projectId:p.id,serverRevision:record.serverRevision,model:{modelType:model,name:info.metadata.name,profile:info.profile},resolution,sources:resolved.map(({path,...s})=>({...s,...(path?{path,willUpload:true}:{})})),workerRequest:built.request,requiredEffects:['network','cpu','gpu'],uploadPlaceholders:Object.fromEntries(Object.entries(uploaded)),
+   return{dryRun:true,submitted:false,projectId:p.id,serverRevision:record.serverRevision,model:{modelType:model,name:info.metadata.name,profile:info.profile},resolution,...(lora?{multiAngleLora:{...loraStatus,...(loraStatus.installed?{}:{warning:loraStatus.reportedByWorker?'Not installed on the worker; a real run would fail before upload.':'This worker does not report camera LoRAs yet; a real run fails with LORA_UNAVAILABLE until the bridge and worker run this code.'})}}:{}),sources:resolved.map(({path,...s})=>({...s,...(path?{path,willUpload:true}:{})})),workerRequest:built.request,requiredEffects:['network','cpu','gpu'],uploadPlaceholders:Object.fromEntries(Object.entries(uploaded)),
     steps:['upload + references.register each local file (cpu, network)','references.planImages with this one card','generation.prepareImages (uploads sources to the worker; persists the request ID)','worker POST /generate once (gpu)','job_wait worker','references.adoptImage'+(args.windowIds?.length?' with attachWindows':'')],
     note:'Dry run: nothing was uploaded, saved or submitted. image_refs hold placeholders; preparation replaces them with worker-owned h3media upload IDs. Run again without dryRun, with licenseAccepted:true and _allow network,cpu,gpu, after explicit GPU approval.'};
   }
@@ -113,10 +119,11 @@ export async function referenceEdit(client,args){
   const planned=await call('references',{action:'planImages',projectId:p.id,expectedRevision:record.serverRevision,proposal:{images:[cardFor(args,referenceIds,prompt)],notes:['Set plate created by reference editImage.']}});
   record=planned.record;const planId=planned.plan.id,cardId=planned.plan.images[0].id;Object.assign(progress,{planId,cardId});
   progress.stage='prepare';
-  const settings={modelType:model,resolution,seed:options.seed,...(args.steps!==undefined?{steps:args.steps}:{}),...(args.guidance!==undefined?{guidance:args.guidance}:{}),...(args.accelerationProfile?{accelerationProfile:args.accelerationProfile}:{})};
+  const settings={modelType:model,resolution,seed:options.seed,...(args.steps!==undefined?{steps:args.steps}:{}),...(args.guidance!==undefined?{guidance:args.guidance}:{}),...(args.accelerationProfile?{accelerationProfile:args.accelerationProfile}:{}),...(lora?{cameraLora:R.MULTI_ANGLE_LORA,cameraLoraStrength:loraStatus.strength}:{})};
   const prepared=await call('generation',{action:'prepareImages',projectId:p.id,expectedRevision:record.serverRevision,requestId,planId,cardIds:[cardId],settings,licenseAccepted:true});
   if(!prepared.ready||prepared.operation?.tool!=='worker')fail('PREPARATION_INCOMPLETE','The studio did not return a worker dispatch operation.',{prepared});
   record=prepared.record;progress.reconciliation=prepared.reconciliation;
+  if(lora&&prepared.operation.arguments?.body?.tasks?.[0]?.camera_lora!==R.MULTI_ANGLE_LORA)fail('LORA_UNAVAILABLE','The studio prepared the request without the camera LoRA (bridge predates it). Nothing was submitted; restart the idle bridge on this code.',{multiAngleLora:loraStatus});
   progress.stage='dispatch';
   const job=await call('worker',prepared.operation.arguments);
   const jobId=job.job_id;progress.jobId=jobId;
@@ -131,7 +138,7 @@ export async function referenceEdit(client,args){
   record=await call('project',{action:'get',projectId:p.id});
   const adopted=await call('references',{...adopt(output.id).arguments,expectedRevision:record.serverRevision});
   const asset=adopted.asset;
-  return{outcome:'completed',projectId:p.id,serverRevision:adopted.record.serverRevision,assetId:asset.id,asset:{id:asset.id,name:asset.name,number:asset.number,type:asset.type,width:asset.width,height:asset.height,sha256:asset.sha256},pictureToken:'<Picture '+asset.number+'>',mediaUrl:'/api/studio-blob?key='+asset.id,attachedWindowIds:args.windowIds?.length?args.windowIds:[],jobId,outputId:output.id,requestId,planId,cardId,
+  return{outcome:'completed',projectId:p.id,serverRevision:adopted.record.serverRevision,assetId:asset.id,asset:{id:asset.id,name:asset.name,number:asset.number,type:asset.type,width:asset.width,height:asset.height,sha256:asset.sha256},pictureToken:'<Picture '+asset.number+'>',mediaUrl:'/api/studio-blob?key='+asset.id,attachedWindowIds:args.windowIds?.length?args.windowIds:[],jobId,outputId:output.id,requestId,planId,cardId,...(lora?{multiAngleLora:loraStatus}:{}),
    next:'Inspect the picture before relying on it. To attach it to more windows use references assign with the window\u2019s COMPLETE image selection (assign replaces the direct image list), e.g. {"action":"assign","projectId":"'+p.id+'","expectedRevision":'+adopted.record.serverRevision+',"windowId":"<window>","assetIds":["<existing ids…>","'+asset.id+'"]}.'};
  }catch(caught){
   const error=caught?.code?caught:new AgentError('INVALID_ARGUMENTS',caught?.message||String(caught));

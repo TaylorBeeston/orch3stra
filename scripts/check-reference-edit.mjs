@@ -51,9 +51,11 @@ assert.deepEqual(await imageSize(files['hall.webp']),{width:80,height:48});
 const qwenInfo={metadata:{model_type:'qwen_image_21_7B',name:'Qwen Image 2.1 TextImage2Image 7B'},profile:{kind:'reference_image',max_references:10,supports_reference_images:true,architecture:'qwen_image_21_7B',default_steps:40,default_guidance:4,license:'Qwen Research License'},image_profiles:[{id:'viggle-turbo-v0.2.1-6step',name:'Viggle 6',steps:6,guidance:1}]};
 const kreaRaw={metadata:{model_type:'krea2_raw',name:'Krea 2 RAW'},profile:{kind:'reference_image',max_references:0,default_steps:52,default_guidance:3.5}};
 let state,received,behaviour;
+const cameraRow=installed=>({id:'multiple-angles-v2',name:'Qwen-Image-2.1 Multiple-Angles v2',trigger:'<mva>',prompt_format:'<mva> {azimuth}, {elevation}[ close-up]',default_strength:1,license:'Apache-2.0',installed});
+const withCamera=info=>behaviour.cameraLoras==='absent'?info:{...info,profile:{...info.profile,camera_loras:[cameraRow(behaviour.cameraLoras==='installed')]}};
 function reset(){
  state={revision:4,project:{id:'film',name:'Marble Hall',windows:[{id:'w1',title:'Hall',subjectIds:[],assetIds:[]}],subjects:[],counters:{image:1},assets:[{id:'hall-asset',kind:'image',name:'Marble hall',number:1,width:1344,height:768,missing:false}]},plans:[],adopted:null};
- received=[];behaviour={generate:'ok',jobStatus:'completed'};
+ received=[];behaviour={generate:'ok',jobStatus:'completed',cameraLoras:'installed',dropLora:false};
 }
 const record=()=>({id:'film',serverRevision:state.revision,project:state.project});
 const bump=()=>{state.revision++;return record();};
@@ -67,10 +69,10 @@ const server=http.createServer(async(req,res)=>{
   const {tool,arguments:a}=input;
   const write=()=>{if(a.expectedRevision!==state.revision)return reply({code:'REVISION_CONFLICT',error:'stale'},409),false;return true;};
   if(tool==='project'&&a.action==='get')return reply(record());
-  if(tool==='generation'&&a.action==='discover')return reply(a.modelType==='krea2_raw'?kreaRaw:qwenInfo);
+  if(tool==='generation'&&a.action==='discover')return reply(a.modelType==='krea2_raw'?kreaRaw:withCamera(qwenInfo));
   if(tool==='references'&&a.action==='register'){if(!write())return;const asset={id:'registered-'+state.project.assets.length,kind:'image',name:a.name,number:++state.project.counters.image,width:96,height:64,missing:false};state.project.assets.push(asset);return reply({record:bump(),asset});}
   if(tool==='references'&&a.action==='planImages'){if(!write())return;const plan={...R.parsePlan(JSON.stringify(a.proposal),state.project),id:'plan-1'};state.plans.push(plan);return reply({record:bump(),plan});}
-  if(tool==='generation'&&a.action==='prepareImages'){if(!write())return;assert.equal(a.licenseAccepted,true);const plan=state.plans.find(p=>p.id===a.planId),card=plan.images.find(c=>c.id===a.cardIds[0]),uploaded=Object.fromEntries(card.referenceIds.map((id,i)=>[id,'h3media:'+String(i+1).repeat(32)]));const info=a.settings.modelType==='krea2_raw'?kreaRaw:qwenInfo;const {request}=buildSetPlateRequest({project:state.project,card,info,model:a.settings.modelType,requestId:a.requestId,resolution:a.settings.resolution,seed:a.settings.seed,steps:a.settings.steps,guidance:a.settings.guidance,accelerationProfile:a.settings.accelerationProfile,uploaded});return reply({record:bump(),ready:true,operation:{tool:'worker',arguments:request},reconciliation:{tool:'worker',arguments:{path:'/requests/'+a.requestId,method:'GET'}}});}
+  if(tool==='generation'&&a.action==='prepareImages'){if(!write())return;assert.equal(a.licenseAccepted,true);const plan=state.plans.find(p=>p.id===a.planId),card=plan.images.find(c=>c.id===a.cardIds[0]),uploaded=Object.fromEntries(card.referenceIds.map((id,i)=>[id,'h3media:'+String(i+1).repeat(32)]));const info=a.settings.modelType==='krea2_raw'?kreaRaw:withCamera(qwenInfo);const {request}=buildSetPlateRequest({project:state.project,card,info,model:a.settings.modelType,requestId:a.requestId,resolution:a.settings.resolution,seed:a.settings.seed,steps:a.settings.steps,guidance:a.settings.guidance,accelerationProfile:a.settings.accelerationProfile,...(behaviour.dropLora?{}:{cameraLora:a.settings.cameraLora,cameraLoraStrength:a.settings.cameraLoraStrength}),uploaded});return reply({record:bump(),ready:true,operation:{tool:'worker',arguments:request},reconciliation:{tool:'worker',arguments:{path:'/requests/'+a.requestId,method:'GET'}}});}
   if(tool==='references'&&a.action==='adoptImage'){if(!write())return;const asset={id:'adopted-asset',kind:'image',name:'set plate.png',number:++state.project.counters.image,type:'image/png',width:1024,height:576,sha256:'f'.repeat(64)};{const {_allow,...rest}=a;state.adopted=rest;}state.project.assets.push(asset);return reply({record:bump(),asset,jobId:a.jobId,outputId:a.outputId});}
   return reply({error:'unexpected agent call '+tool+' '+a.action},400);
  }
@@ -135,10 +137,44 @@ try{
  const slow=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',timeoutMs:1000,licenseAccepted:true,_allow:['network','cpu','gpu']});
  assert.equal(slow.outcome,'timeout');assert.equal(state.adopted,null);assert.equal(generates().length,1);
 
+// Multiple-Angles camera LoRA: opt-in, allowlisted id, <mva> pose caption, strength.
+ reset();
+ assert.equal(R.multiAngleCaption('back view, eye-level shot'),'<mva> back view, eye-level shot');
+ assert.equal(R.multiAngleCaption({azimuth:'left side view',elevation:'high-angle shot',closeUp:true}),'<mva> left side view, high-angle shot close-up');
+ assert.throws(()=>R.multiAngleCaption('behind, eye-level shot'),/azimuth/);assert.throws(()=>R.multiAngleCaption('back view, worm-eye shot'),/elevation/);
+ assert.match(R.setPlatePrompt('reverse angle',1,{cameraView:'back view, eye-level shot'}),/^<mva> back view, eye-level shot\nSame location as <image1>\. New camera view: reverse angle\n/);
+ const plain=(await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',dryRun:true,_allow:['network']})).workerRequest.body.tasks[0];
+ assert.equal('camera_lora' in plain,false,'LoRA stays off unless requested');
+ const angled=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,multiAngleLoraStrength:0.9,width:512,height:288,accelerationProfile:'viggle-turbo-v0.2.1-6step',dryRun:true,_allow:['network']});
+ const at=angled.workerRequest.body.tasks[0];
+ assert.equal(at.camera_lora,'multiple-angles-v2');assert.equal(at.camera_lora_strength,0.9);assert.equal(at.acceleration_profile,'viggle-turbo-v0.2.1-6step');assert.match(at.prompt,/^<mva> back view, eye-level shot\n/);
+ assert.deepEqual(angled.multiAngleLora,{id:'multiple-angles-v2',strength:0.9,installed:true,reportedByWorker:true});
+ assert.equal(JSON.stringify(angled.workerRequest).includes('safetensors'),false,'clients never send LoRA paths or URLs');
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',multiAngleLora:true,dryRun:true,_allow:['network']}),e=>e.code==='INVALID_ARGUMENTS'&&/cameraView/.test(e.message));
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',multiAngleLoraStrength:0.8,dryRun:true,_allow:['network']}),e=>e.code==='INVALID_ARGUMENTS');
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',multiAngleLora:true,multiAngleLoraStrength:3,cameraView:'back view, eye-level shot',dryRun:true,_allow:['network']}),e=>e.code==='INVALID_ARGUMENTS');
+ const literal=(await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'<mva> back view, eye-level shot',literalPrompt:true,multiAngleLora:true,dryRun:true,_allow:['network']})).workerRequest.body.tasks[0];
+ assert.equal(literal.prompt,'<mva> back view, eye-level shot');assert.equal(literal.camera_lora_strength,1);
+ assert.equal(mutations().length,0);
+ behaviour.cameraLoras='absent';
+ const old=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,dryRun:true,_allow:['network']});
+ assert.equal(old.multiAngleLora.reportedByWorker,false);assert.match(old.multiAngleLora.warning,/LORA_UNAVAILABLE/);
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,licenseAccepted:true,_allow:['network','cpu','gpu']}),e=>e.code==='LORA_UNAVAILABLE');
+ behaviour.cameraLoras='missing';
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,licenseAccepted:true,_allow:['network','cpu','gpu']}),e=>e.code==='LORA_UNAVAILABLE'&&/not installed/.test(e.message));
+ assert.equal(mutations().length,0,'unavailable LoRA fails before any upload, plan or GPU work');
+ behaviour.cameraLoras='installed';behaviour.dropLora=true;
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,licenseAccepted:true,_allow:['network','cpu','gpu']}),e=>e.code==='LORA_UNAVAILABLE'&&/bridge predates/.test(e.message));
+ assert.equal(generates().length,0,'an outdated bridge never gets a LoRA-less dispatch');
+ reset();
+ const lit=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,seed:7,licenseAccepted:true,_allow:['network','cpu','gpu']});
+ assert.equal(lit.outcome,'completed');assert.equal(generates().length,1);assert.equal(generates()[0].input.body.tasks[0].camera_lora,'multiple-angles-v2');assert.equal(lit.multiAngleLora.strength,1);
+ assert.equal(generates()[0].input.body.snapshot.settings.cameraLora,'multiple-angles-v2','snapshot records the LoRA');
+
  // CLI JSON output (same dry run through orch3stra.mjs).
  reset();
  const {stdout}=await exec(process.execPath,[join(ROOT,'orch3stra.mjs'),'reference','editImage','--url',url,'--allow','network','--json',JSON.stringify({projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',seed:3,dryRun:true})],{cwd:tmp});
  const cli=JSON.parse(stdout);assert.equal(cli.dryRun,true);assert.equal(cli.workerRequest.body.tasks[0].seed,3);assert.equal(mutations().length,0);
  await assert.rejects(()=>exec(process.execPath,[join(ROOT,'orch3stra.mjs'),'reference','oops','--url',url,'--json','{}'],{cwd:tmp}),e=>JSON.parse(e.stdout).error.code==='INVALID_ARGUMENTS');
- console.log('PASS set-plate prompt/resolution helpers, image headers, catalogue admission, dry-run request validation without writes, full compose with one dispatch, wait:false, lost-dispatch non-replay, wait timeout and CLI JSON');
+ console.log('PASS set-plate prompt/resolution helpers, image headers, catalogue admission, dry-run request validation without writes, full compose with one dispatch, opt-in Multiple-Angles LoRA (pose grammar, strength, allowlist, outdated worker/bridge refusal), wait:false, lost-dispatch non-replay, wait timeout and CLI JSON');
 }finally{await new Promise(r=>server.close(r));await rm(tmp,{recursive:true,force:true});}

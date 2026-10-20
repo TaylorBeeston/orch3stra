@@ -59,7 +59,7 @@ function task(card,settings,uploaded){
  if(card.referenceIds.length>cap)throw Error('Selected image preset accepts '+cap+' reference images. Choose a reference-capable Edit preset or reduce the input selection; inputs are never discarded.');
  if(!settings.modelType)throw Error('Discover and select the actual Qwen Image 2.1 preset.');
  const refs=card.referenceIds.map(id=>{if(!uploaded[id])throw Error('Missing uploaded reference.');return uploaded[id];});
- return{mode:'reference_image',model_type:settings.modelType,license_accepted:settings.licenseAccepted===true,prompt:card.prompt,multi_prompts_gen_type:'FG',image_refs:refs,resolution:settings.resolution||'1024x1024',num_inference_steps:Number(settings.steps??defaults.steps),guidance_scale:Number(settings.guidance??defaults.guidance),seed:Number(settings.seed??-1),acceleration_profile:settings.accelerationProfile||'',preserve_first_scene:settings.preserveFirstScene===true};
+ return{mode:'reference_image',model_type:settings.modelType,license_accepted:settings.licenseAccepted===true,prompt:card.prompt,multi_prompts_gen_type:'FG',image_refs:refs,resolution:settings.resolution||'1024x1024',num_inference_steps:Number(settings.steps??defaults.steps),guidance_scale:Number(settings.guidance??defaults.guidance),seed:Number(settings.seed??-1),acceleration_profile:settings.accelerationProfile||'',preserve_first_scene:settings.preserveFirstScene===true,...(settings.cameraLora?{camera_lora:String(settings.cameraLora),camera_lora_strength:Number(settings.cameraLoraStrength??1)}:{})};
 }
 function applyGenerated(p,asset,card,attachWindows=false){
  if(p.assets.some(a=>a.provenance?.jobId===asset.provenance?.jobId&&a.provenance?.outputId===asset.provenance?.outputId))throw Error('This output is already in the library.');
@@ -80,7 +80,22 @@ function reorderReferences(card,next){
 // Set plates: a new camera angle of the SAME place, edited from existing stills with
 // an image-editing preset (Qwen Image 2.1 takes up to ten ordered <imageN> inputs).
 const SET_PLATE_MODEL='qwen_image_21_7B';
-function setPlatePrompt(instruction,count=1,{literal=false}={}){
+// Pose grammar of the Qwen-Image-2.1 Multiple-Angles LoRA (akhaliq, v1/v2): "<mva> {azimuth}, {elevation}[ close-up]".
+const MULTI_ANGLE_LORA='multiple-angles-v2',MULTI_ANGLE_TRIGGER='<mva>';
+const MULTI_ANGLE_AZIMUTHS=['front view','front-right view','front-right quarter view','right side view','back-right quarter view','back-right view','back view','back-left view','back-left quarter view','left side view','front-left quarter view','front-left view'];
+const MULTI_ANGLE_ELEVATIONS=['eye-level shot','elevated shot','high-angle shot','top-down shot'];
+function multiAngleCaption(view){
+ if(typeof view==='string'){
+  const m=view.trim().replace(/^<mva>\s*/,'').match(/^(.+?),\s*(.+?)( close-up)?$/);
+  if(!m)throw Error('cameraView must read "{azimuth}, {elevation}[ close-up]", e.g. "back view, eye-level shot".');
+  view={azimuth:m[1],elevation:m[2],closeUp:!!m[3]};
+ }
+ const azimuth=String(view?.azimuth||'').trim(),elevation=String(view?.elevation||'eye-level shot').trim();
+ if(!MULTI_ANGLE_AZIMUTHS.includes(azimuth))throw Error('cameraView azimuth must be one of: '+MULTI_ANGLE_AZIMUTHS.join(', ')+'.');
+ if(!MULTI_ANGLE_ELEVATIONS.includes(elevation))throw Error('cameraView elevation must be one of: '+MULTI_ANGLE_ELEVATIONS.join(', ')+'.');
+ return `${MULTI_ANGLE_TRIGGER} ${azimuth}, ${elevation}${view.closeUp===true?' close-up':''}`;
+}
+function setPlatePrompt(instruction,count=1,{literal=false,cameraView}={}){
  const text=String(instruction||'').trim();
  if(!text)throw Error('Describe the new camera angle, e.g. "reverse angle, the entrance door now behind the camera".');
  if(!Number.isInteger(count)||count<1||count>10)throw Error('A set plate needs 1–10 source images.');
@@ -89,7 +104,8 @@ function setPlatePrompt(instruction,count=1,{literal=false}={}){
   return text;
  }
  const others=count===1?'':count===2?' <image2> shows the same place or its subjects from another view.':` <image2> to <image${count}> show the same place or its subjects from other views.`;
- return `Same location as <image1>.${others} New camera view: ${text}\nKeep it the same room as in the source image${count>1?'s':''}: identical architecture, layout, materials, colours, fixtures, props and lighting. Keep any people from the source${count>1?'s':''} consistent in identity and clothing. Change only the camera position, angle and framing described. One standalone photographic still, no collage, no added text.`;
+ const pose=cameraView?multiAngleCaption(cameraView)+'\n':'';
+ return `${pose}Same location as <image1>.${others} New camera view: ${text}\nKeep it the same room as in the source image${count>1?'s':''}: identical architecture, layout, materials, colours, fixtures, props and lighting. Keep any people from the source${count>1?'s':''} consistent in identity and clothing. Change only the camera position, angle and framing described. One standalone photographic still, no collage, no added text.`;
 }
 function setPlateResolution(source,{width,height}={}){
  const ok=n=>Number.isInteger(n)&&n>=256&&n<=2048&&n%32===0;
@@ -102,5 +118,5 @@ function setPlateResolution(source,{width,height}={}){
  const fit=n=>Math.min(2048,Math.max(256,Math.round(n/32)*32));
  return w>=h?`1024x${fit(1024*h/w)}`:`${fit(1024*w/h)}x1024`;
 }
-return{SET_PLATE_MODEL,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
+return{SET_PLATE_MODEL,MULTI_ANGLE_LORA,MULTI_ANGLE_TRIGGER,MULTI_ANGLE_AZIMUTHS,MULTI_ANGLE_ELEVATIONS,multiAngleCaption,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
 });
