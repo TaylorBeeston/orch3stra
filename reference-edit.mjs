@@ -67,7 +67,7 @@ export async function referenceEdit(client,args){
  const allow=args._allow||[],dryRun=args.dryRun===true,model=args.model||DEFAULT_EDIT_MODEL;
  const sources=args.sourceImages??[args.sourceImage];
  if(new Set(sources).size!==sources.length)fail('INVALID_ARGUMENTS','Source images must be distinct.');
- if(!dryRun&&args.licenseAccepted!==true)fail('LICENSE_REQUIRED','Review the selected image model licence (Qwen Image 2.1: Qwen Research License) and pass licenseAccepted:true for this request. Use dryRun:true to inspect the request first.');
+ if(!dryRun&&args.licenseAccepted!==true)fail('LICENSE_REQUIRED','Review the selected image model licence (Qwen Image 2.1: Qwen Research License; Qwen Image Edit 2511: Apache-2.0) and pass licenseAccepted:true for this request. Use dryRun:true to inspect the request first.');
  const requestId=args.requestId||('set_plate_'+randomUUID().replaceAll('-',''));
  const progress={requestId,stage:'project'};
  const call=(tool,input)=>client.call(tool,{...input,_allow:allow});
@@ -89,15 +89,16 @@ export async function referenceEdit(client,args){
   const info=await call('generation',{action:'discover',family:'image',modelType:model});
   if(info.metadata?.model_type!==model||info.profile?.kind!=='reference_image')fail('MODEL_UNSUPPORTED','The worker does not expose '+model+' as a reference-image preset.');
   if(!(info.profile.max_references>=sources.length))fail('MODEL_UNSUPPORTED',model+' accepts '+(info.profile.max_references||0)+' input image(s); this edit has '+sources.length+'. Choose an editing preset such as '+DEFAULT_EDIT_MODEL+' (10 inputs) or a Krea 2 *_edit preset (2 inputs).');
-  const lora=args.multiAngleLora===true;
+  const lora=args.multiAngleLora===true,grammar=R.cameraLoraFor(model);
+  if(lora&&!grammar)fail('INVALID_ARGUMENTS','multiAngleLora is available for '+Object.keys(R.CAMERA_LORA_GRAMMARS).join(' and ')+' only.');
   if(args.multiAngleLoraStrength!==undefined&&!lora)fail('INVALID_ARGUMENTS','multiAngleLoraStrength needs multiAngleLora:true.');
-  if(lora&&!args.cameraView&&!String(args.prompt).includes(R.MULTI_ANGLE_TRIGGER))fail('INVALID_ARGUMENTS','multiAngleLora needs cameraView (e.g. "back view, eye-level shot") or a prompt containing '+R.MULTI_ANGLE_TRIGGER+'.');
-  const prompt=R.setPlatePrompt(args.prompt,sources.length,{literal:args.literalPrompt===true,cameraView:args.cameraView});
-  const cameraEntry=lora?(info.profile.camera_loras||[]).find(row=>row.id===R.MULTI_ANGLE_LORA):null;
-  const loraStatus=lora?{id:R.MULTI_ANGLE_LORA,strength:args.multiAngleLoraStrength??cameraEntry?.default_strength??1,installed:cameraEntry?.installed===true,reportedByWorker:!!cameraEntry}:null;
-  if(lora&&!dryRun&&!loraStatus.installed)fail('LORA_UNAVAILABLE',cameraEntry?'The worker reports the Multiple-Angles LoRA as not installed in WanGP loras/qwen21.':'The running worker predates camera-LoRA support (no profile.camera_loras). Restart the idle bridge and worker on code with this change, then retry.',{multiAngleLora:loraStatus});
+  if(lora&&!args.cameraView&&!String(args.prompt).includes(grammar.trigger))fail('INVALID_ARGUMENTS','multiAngleLora needs cameraView (e.g. '+(model===R.EDIT_2511_MODEL?'"back view eye-level shot medium shot"':'"back view, eye-level shot"')+') or a prompt containing '+grammar.trigger+'.');
+  const prompt=R.setPlatePrompt(args.prompt,sources.length,{literal:args.literalPrompt===true,cameraView:args.cameraView,model});
+  const cameraEntry=lora?(info.profile.camera_loras||[]).find(row=>row.id===grammar.id):null;
+  const loraStatus=lora?{id:grammar.id,strength:args.multiAngleLoraStrength??cameraEntry?.default_strength??1,installed:cameraEntry?.installed===true,reportedByWorker:!!cameraEntry}:null;
+  if(lora&&!dryRun&&!loraStatus.installed)fail('LORA_UNAVAILABLE',cameraEntry?'The worker reports the Multiple-Angles LoRA as not installed in WanGP '+(model===R.EDIT_2511_MODEL?'loras/qwen':'loras/qwen21')+'.':'The running worker predates camera-LoRA support (no profile.camera_loras). Restart the idle bridge and worker on code with this change, then retry.',{multiAngleLora:loraStatus});
   const resolution=R.setPlateResolution(resolved[0],{width:args.width,height:args.height});
-  const options={model,requestId,resolution,seed:args.seed??-1,steps:args.steps,guidance:args.guidance,accelerationProfile:args.accelerationProfile,...(lora?{cameraLora:R.MULTI_ANGLE_LORA,cameraLoraStrength:loraStatus.strength}:{})};
+  const options={model,requestId,resolution,seed:args.seed??-1,steps:args.steps,guidance:args.guidance,accelerationProfile:args.accelerationProfile,...(lora?{cameraLora:grammar.id,cameraLoraStrength:loraStatus.strength}:{})};
   if(dryRun){
    const preview=H.clone(p),uploaded={};
    resolved.forEach((s,i)=>{if(s.kind==='file'){s.assetId='dry-run-source-'+(i+1);preview.assets.push({id:s.assetId,kind:'image',name:s.name,width:s.width,height:s.height,missing:false});}uploaded[s.assetId]=placeholder(s.assetId);});
@@ -119,11 +120,11 @@ export async function referenceEdit(client,args){
   const planned=await call('references',{action:'planImages',projectId:p.id,expectedRevision:record.serverRevision,proposal:{images:[cardFor(args,referenceIds,prompt)],notes:['Set plate created by reference editImage.']}});
   record=planned.record;const planId=planned.plan.id,cardId=planned.plan.images[0].id;Object.assign(progress,{planId,cardId});
   progress.stage='prepare';
-  const settings={modelType:model,resolution,seed:options.seed,...(args.steps!==undefined?{steps:args.steps}:{}),...(args.guidance!==undefined?{guidance:args.guidance}:{}),...(args.accelerationProfile?{accelerationProfile:args.accelerationProfile}:{}),...(lora?{cameraLora:R.MULTI_ANGLE_LORA,cameraLoraStrength:loraStatus.strength}:{})};
+  const settings={modelType:model,resolution,seed:options.seed,...(args.steps!==undefined?{steps:args.steps}:{}),...(args.guidance!==undefined?{guidance:args.guidance}:{}),...(args.accelerationProfile?{accelerationProfile:args.accelerationProfile}:{}),...(lora?{cameraLora:grammar.id,cameraLoraStrength:loraStatus.strength}:{})};
   const prepared=await call('generation',{action:'prepareImages',projectId:p.id,expectedRevision:record.serverRevision,requestId,planId,cardIds:[cardId],settings,licenseAccepted:true});
   if(!prepared.ready||prepared.operation?.tool!=='worker')fail('PREPARATION_INCOMPLETE','The studio did not return a worker dispatch operation.',{prepared});
   record=prepared.record;progress.reconciliation=prepared.reconciliation;
-  if(lora&&prepared.operation.arguments?.body?.tasks?.[0]?.camera_lora!==R.MULTI_ANGLE_LORA)fail('LORA_UNAVAILABLE','The studio prepared the request without the camera LoRA (bridge predates it). Nothing was submitted; restart the idle bridge on this code.',{multiAngleLora:loraStatus});
+  if(lora&&prepared.operation.arguments?.body?.tasks?.[0]?.camera_lora!==grammar.id)fail('LORA_UNAVAILABLE','The studio prepared the request without the camera LoRA (bridge predates it). Nothing was submitted; restart the idle bridge on this code.',{multiAngleLora:loraStatus});
   progress.stage='dispatch';
   const job=await call('worker',prepared.operation.arguments);
   const jobId=job.job_id;progress.jobId=jobId;

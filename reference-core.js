@@ -84,7 +84,32 @@ const SET_PLATE_MODEL='qwen_image_21_7B';
 const MULTI_ANGLE_LORA='multiple-angles-v2',MULTI_ANGLE_TRIGGER='<mva>';
 const MULTI_ANGLE_AZIMUTHS=['front view','front-right view','front-right quarter view','right side view','back-right quarter view','back-right view','back view','back-left view','back-left quarter view','left side view','front-left quarter view','front-left view'];
 const MULTI_ANGLE_ELEVATIONS=['eye-level shot','elevated shot','high-angle shot','top-down shot'];
-function multiAngleCaption(view){
+// Qwen-Image-Edit-2511 (WanGP qwen_image_edit_plus2_20B) and the fal Multiple-Angles LoRA (96 poses):
+// "<sks> {azimuth} {elevation} {distance}", 45° azimuth steps, e.g. "<sks> back view eye-level shot medium shot".
+const EDIT_2511_MODEL='qwen_image_edit_plus2_20B';
+const ANGLES_2511={id:'multiple-angles-2511',trigger:'<sks>',maxSources:3,
+ azimuths:['front view','front-right quarter view','right side view','back-right quarter view','back view','back-left quarter view','left side view','front-left quarter view'],
+ elevations:['low-angle shot','eye-level shot','elevated shot','high-angle shot'],distances:['close-up','medium shot','wide shot']};
+const CAMERA_LORA_GRAMMARS={qwen_image_21_7B:{id:'multiple-angles-v2',trigger:'<mva>',maxSources:10},[EDIT_2511_MODEL]:ANGLES_2511};
+function cameraLoraFor(model){return CAMERA_LORA_GRAMMARS[model||SET_PLATE_MODEL]||null;}
+function caption2511(view){
+ const g=ANGLES_2511;
+ if(typeof view==='string'){
+  // Accept the card's annotated form too: "left side view (270°) eye-level shot (0°) close-up (×0.6)".
+  let rest=view.replace(/^\s*<sks>\s*/,'').replace(/\([^)]*\)/g,' ').replace(/,/g,' ').replace(/\s+/g,' ').trim();
+  const take=list=>{const hit=[...list].sort((a,b)=>b.length-a.length).find(x=>rest===x||rest.startsWith(x+' '));if(hit)rest=rest.slice(hit.length).trim();return hit;};
+  const azimuth=take(g.azimuths),elevation=take(g.elevations)||'eye-level shot',distance=take(g.distances)||'medium shot';
+  if(!azimuth||rest)throw Error('cameraView must read "{azimuth} {elevation} {distance}", e.g. "back view eye-level shot medium shot". Azimuths: '+g.azimuths.join(', ')+'.');
+  view={azimuth,elevation,distance};
+ }
+ const azimuth=String(view?.azimuth||'').trim(),elevation=String(view?.elevation||'eye-level shot').trim(),distance=String(view?.distance||'medium shot').trim();
+ if(!g.azimuths.includes(azimuth))throw Error('cameraView azimuth must be one of: '+g.azimuths.join(', ')+'.');
+ if(!g.elevations.includes(elevation))throw Error('cameraView elevation must be one of: '+g.elevations.join(', ')+'.');
+ if(!g.distances.includes(distance))throw Error('cameraView distance must be one of: '+g.distances.join(', ')+'.');
+ return `${g.trigger} ${azimuth} ${elevation} ${distance}`;
+}
+function multiAngleCaption(view,model){
+ if(model===EDIT_2511_MODEL)return caption2511(view);
  if(typeof view==='string'){
   const m=view.trim().replace(/^<mva>\s*/,'').match(/^(.+?),\s*(.+?)( close-up)?$/);
   if(!m)throw Error('cameraView must read "{azimuth}, {elevation}[ close-up]", e.g. "back view, eye-level shot".');
@@ -95,9 +120,17 @@ function multiAngleCaption(view){
  if(!MULTI_ANGLE_ELEVATIONS.includes(elevation))throw Error('cameraView elevation must be one of: '+MULTI_ANGLE_ELEVATIONS.join(', ')+'.');
  return `${MULTI_ANGLE_TRIGGER} ${azimuth}, ${elevation}${view.closeUp===true?' close-up':''}`;
 }
-function setPlatePrompt(instruction,count=1,{literal=false,cameraView}={}){
+function setPlatePrompt(instruction,count=1,{literal=false,cameraView,model}={}){
  const text=String(instruction||'').trim();
  if(!text)throw Error('Describe the new camera angle, e.g. "reverse angle, the entrance door now behind the camera".');
+ if(model===EDIT_2511_MODEL){
+  // Qwen Image Edit takes ordered images without <imageN> tokens; the first image is the one edited.
+  if(!Number.isInteger(count)||count<1||count>3)throw Error('A Qwen Image Edit 2511 set plate needs 1–3 source images.');
+  if(literal)return text;
+  const pose=cameraView?caption2511(cameraView)+'\n':'';
+  const others=count>1?' The other image'+(count>2?'s show':' shows')+' the same place or its subjects from another view.':'';
+  return `${pose}Move the camera to a new position in the same location as the first image: ${text}.${others} Keep it the same room: identical architecture, layout, materials, colours, fixtures, props and lighting. Keep any people consistent in identity and clothing. Change only the camera position, angle and framing. One photographic still, no collage, no added text.`;
+ }
  if(!Number.isInteger(count)||count<1||count>10)throw Error('A set plate needs 1–10 source images.');
  if(literal||/<image\d+>/.test(text)){
   if([...text.matchAll(/<image(\d+)>/g)].some(m=>+m[1]<1||+m[1]>count))throw Error('The instruction refers to a missing <imageN> source.');
@@ -118,5 +151,5 @@ function setPlateResolution(source,{width,height}={}){
  const fit=n=>Math.min(2048,Math.max(256,Math.round(n/32)*32));
  return w>=h?`1024x${fit(1024*h/w)}`:`${fit(1024*w/h)}x1024`;
 }
-return{SET_PLATE_MODEL,MULTI_ANGLE_LORA,MULTI_ANGLE_TRIGGER,MULTI_ANGLE_AZIMUTHS,MULTI_ANGLE_ELEVATIONS,multiAngleCaption,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
+return{SET_PLATE_MODEL,EDIT_2511_MODEL,ANGLES_2511,CAMERA_LORA_GRAMMARS,cameraLoraFor,MULTI_ANGLE_LORA,MULTI_ANGLE_TRIGGER,MULTI_ANGLE_AZIMUTHS,MULTI_ANGLE_ELEVATIONS,multiAngleCaption,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
 });

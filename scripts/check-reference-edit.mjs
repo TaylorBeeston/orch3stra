@@ -52,6 +52,8 @@ const qwenInfo={metadata:{model_type:'qwen_image_21_7B',name:'Qwen Image 2.1 Tex
 const kreaRaw={metadata:{model_type:'krea2_raw',name:'Krea 2 RAW'},profile:{kind:'reference_image',max_references:0,default_steps:52,default_guidance:3.5}};
 let state,received,behaviour;
 const cameraRow=installed=>({id:'multiple-angles-v2',name:'Qwen-Image-2.1 Multiple-Angles v2',trigger:'<mva>',prompt_format:'<mva> {azimuth}, {elevation}[ close-up]',default_strength:1,license:'Apache-2.0',installed});
+const plus2Info={metadata:{model_type:'qwen_image_edit_plus2_20B',name:'Qwen Image Edit Plus (2511) 20B'},profile:{kind:'reference_image',max_references:3,supports_reference_images:true,architecture:'qwen_image_edit_plus2_20B',default_steps:30,default_guidance:4,license:'Apache-2.0 (Qwen-Image-Edit-2511)',
+ camera_loras:[{id:'multiple-angles-2511',name:'Qwen-Image-Edit-2511 Multiple-Angles (fal, 96 poses)',trigger:'<sks>',prompt_format:'<sks> {azimuth} {elevation} {distance}',default_strength:0.9,license:'Apache-2.0',installed:true}]},image_profiles:[]};
 const withCamera=info=>behaviour.cameraLoras==='absent'?info:{...info,profile:{...info.profile,camera_loras:[cameraRow(behaviour.cameraLoras==='installed')]}};
 function reset(){
  state={revision:4,project:{id:'film',name:'Marble Hall',windows:[{id:'w1',title:'Hall',subjectIds:[],assetIds:[]}],subjects:[],counters:{image:1},assets:[{id:'hall-asset',kind:'image',name:'Marble hall',number:1,width:1344,height:768,missing:false}]},plans:[],adopted:null};
@@ -69,7 +71,7 @@ const server=http.createServer(async(req,res)=>{
   const {tool,arguments:a}=input;
   const write=()=>{if(a.expectedRevision!==state.revision)return reply({code:'REVISION_CONFLICT',error:'stale'},409),false;return true;};
   if(tool==='project'&&a.action==='get')return reply(record());
-  if(tool==='generation'&&a.action==='discover')return reply(a.modelType==='krea2_raw'?kreaRaw:withCamera(qwenInfo));
+  if(tool==='generation'&&a.action==='discover')return reply(a.modelType==='krea2_raw'?kreaRaw:a.modelType==='qwen_image_edit_plus2_20B'?plus2Info:withCamera(qwenInfo));
   if(tool==='references'&&a.action==='register'){if(!write())return;const asset={id:'registered-'+state.project.assets.length,kind:'image',name:a.name,number:++state.project.counters.image,width:96,height:64,missing:false};state.project.assets.push(asset);return reply({record:bump(),asset});}
   if(tool==='references'&&a.action==='planImages'){if(!write())return;const plan={...R.parsePlan(JSON.stringify(a.proposal),state.project),id:'plan-1'};state.plans.push(plan);return reply({record:bump(),plan});}
   if(tool==='generation'&&a.action==='prepareImages'){if(!write())return;assert.equal(a.licenseAccepted,true);const plan=state.plans.find(p=>p.id===a.planId),card=plan.images.find(c=>c.id===a.cardIds[0]),uploaded=Object.fromEntries(card.referenceIds.map((id,i)=>[id,'h3media:'+String(i+1).repeat(32)]));const info=a.settings.modelType==='krea2_raw'?kreaRaw:withCamera(qwenInfo);const {request}=buildSetPlateRequest({project:state.project,card,info,model:a.settings.modelType,requestId:a.requestId,resolution:a.settings.resolution,seed:a.settings.seed,steps:a.settings.steps,guidance:a.settings.guidance,accelerationProfile:a.settings.accelerationProfile,...(behaviour.dropLora?{}:{cameraLora:a.settings.cameraLora,cameraLoraStrength:a.settings.cameraLoraStrength}),uploaded});return reply({record:bump(),ready:true,operation:{tool:'worker',arguments:request},reconciliation:{tool:'worker',arguments:{path:'/requests/'+a.requestId,method:'GET'}}});}
@@ -170,6 +172,27 @@ try{
  const lit=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',prompt:'reverse angle',cameraView:'back view, eye-level shot',multiAngleLora:true,seed:7,licenseAccepted:true,_allow:['network','cpu','gpu']});
  assert.equal(lit.outcome,'completed');assert.equal(generates().length,1);assert.equal(generates()[0].input.body.tasks[0].camera_lora,'multiple-angles-v2');assert.equal(lit.multiAngleLora.strength,1);
  assert.equal(generates()[0].input.body.snapshot.settings.cameraLora,'multiple-angles-v2','snapshot records the LoRA');
+
+ // Qwen Image Edit 2511 + fal Multiple-Angles LoRA: "<sks> {azimuth} {elevation} {distance}", no <imageN> tokens.
+ reset();
+ const P2='qwen_image_edit_plus2_20B';
+ assert.equal(R.cameraLoraFor(P2).id,'multiple-angles-2511');assert.equal(R.cameraLoraFor('krea2_raw'),null);
+ assert.equal(R.multiAngleCaption('back view eye-level shot medium shot',P2),'<sks> back view eye-level shot medium shot');
+ assert.equal(R.multiAngleCaption('<sks> left side view (270°) eye-level shot (0°) close-up (×0.6)',P2),'<sks> left side view eye-level shot close-up','the card\'s annotated form');
+ assert.equal(R.multiAngleCaption('front-right quarter view, low-angle shot',P2),'<sks> front-right quarter view low-angle shot medium shot');
+ assert.equal(R.multiAngleCaption({azimuth:'right side view',elevation:'high-angle shot',distance:'wide shot'},P2),'<sks> right side view high-angle shot wide shot');
+ assert.throws(()=>R.multiAngleCaption('back-right view eye-level shot',P2),/azimuth/);assert.throws(()=>R.multiAngleCaption('back view top-down shot',P2),/cameraView/);
+ const p2prompt=R.setPlatePrompt('reverse angle',1,{model:P2,cameraView:'back view eye-level shot medium shot'});
+ assert.match(p2prompt,/^<sks> back view eye-level shot medium shot\nMove the camera to a new position in the same location as the first image: reverse angle\./);assert.equal(/<image\d/.test(p2prompt),false);
+ assert.throws(()=>R.setPlatePrompt('reverse angle',4,{model:P2}),/1–3/);
+ const p2=await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',model:P2,prompt:'reverse angle',cameraView:'back view eye-level shot medium shot',multiAngleLora:true,width:512,height:896,dryRun:true,_allow:['network']});
+ const p2t=p2.workerRequest.body.tasks[0];
+ assert.equal(p2t.model_type,P2);assert.equal(p2t.camera_lora,'multiple-angles-2511');assert.equal(p2t.camera_lora_strength,0.9,'worker-reported default');assert.match(p2t.prompt,/^<sks> back view/);
+ assert.deepEqual(p2.multiAngleLora,{id:'multiple-angles-2511',strength:0.9,installed:true,reportedByWorker:true});
+ const p2plain=(await client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',model:P2,prompt:'reverse angle',dryRun:true,_allow:['network']})).workerRequest.body.tasks[0];
+ assert.equal('camera_lora' in p2plain,false);assert.match(p2plain.prompt,/^Move the camera/);
+ await assert.rejects(()=>client.call('reference_edit',{projectId:'film',sourceImage:'hall-asset',model:P2,prompt:'reverse angle',multiAngleLora:true,dryRun:true,_allow:['network']}),e=>e.code==='INVALID_ARGUMENTS'&&/<sks>/.test(e.message));
+ assert.equal(mutations().length,0);
 
  // CLI JSON output (same dry run through orch3stra.mjs).
  reset();
