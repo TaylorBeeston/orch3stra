@@ -52,6 +52,7 @@ function parseInspection(raw,p,{alreadyInspected=[],batchIds=[]}={}){
 function imageDefaults(modelType){
  const key=String(modelType||'').toLowerCase();
  if(key.startsWith('krea2_'))return {maxReferences:key.includes('edit')?2:0,steps:key.includes('turbo')?8:key.includes('edit')?20:52,guidance:key.includes('turbo')?0:key.includes('edit')?2:3.5};
+ if(key===EDIT_2511_MODEL.toLowerCase())return {maxReferences:3,steps:30,guidance:4};
  return {maxReferences:10,steps:40,guidance:4};
 }
 function task(card,settings,uploaded){
@@ -77,9 +78,10 @@ function reorderReferences(card,next){
  const old=card.referenceIds;for(const m of card.prompt.matchAll(/<image(\d+)>/g)){const id=old[Number(m[1])-1];if(id&&!next.includes(id))throw Error('The prompt still refers to the image you are removing. Edit that instruction first.');}
  card.prompt=card.prompt.replace(/<image(\d+)>/g,(token,n)=>{const id=old[Number(n)-1],i=next.indexOf(id);return i<0?token:`<image${i+1}>`;});card.referenceIds=[...next];return card;
 }
-// Set plates: a new camera angle of the SAME place, edited from existing stills with
-// an image-editing preset (Qwen Image 2.1 takes up to ten ordered <imageN> inputs).
-const SET_PLATE_MODEL='qwen_image_21_7B';
+// Set plates: a new camera angle of the SAME place, edited from existing stills with an
+// image-editing preset. Default: Qwen Image Edit 2511 (up to 3 ordered inputs) with its
+// Multiple-Angles LoRA; Qwen Image 2.1 (up to ten <imageN> inputs) stays selectable.
+const SET_PLATE_MODEL='qwen_image_edit_plus2_20B',QWEN21_MODEL='qwen_image_21_7B',SET_PLATE_LORA_STRENGTH=0.9;
 // Pose grammar of the Qwen-Image-2.1 Multiple-Angles LoRA (akhaliq, v1/v2): "<mva> {azimuth}, {elevation}[ close-up]".
 const MULTI_ANGLE_LORA='multiple-angles-v2',MULTI_ANGLE_TRIGGER='<mva>';
 const MULTI_ANGLE_AZIMUTHS=['front view','front-right view','front-right quarter view','right side view','back-right quarter view','back-right view','back view','back-left view','back-left quarter view','left side view','front-left quarter view','front-left view'];
@@ -90,7 +92,17 @@ const EDIT_2511_MODEL='qwen_image_edit_plus2_20B';
 const ANGLES_2511={id:'multiple-angles-2511',trigger:'<sks>',maxSources:3,
  azimuths:['front view','front-right quarter view','right side view','back-right quarter view','back view','back-left quarter view','left side view','front-left quarter view'],
  elevations:['low-angle shot','eye-level shot','elevated shot','high-angle shot'],distances:['close-up','medium shot','wide shot']};
-const CAMERA_LORA_GRAMMARS={qwen_image_21_7B:{id:'multiple-angles-v2',trigger:'<mva>',maxSources:10},[EDIT_2511_MODEL]:ANGLES_2511};
+const CAMERA_LORA_GRAMMARS={[QWEN21_MODEL]:{id:'multiple-angles-v2',trigger:'<mva>',maxSources:10},[EDIT_2511_MODEL]:ANGLES_2511};
+// UI set plates: a card whose prompt starts with <sks> carries the 2511 angle LoRA. Throws a clear error
+// (before any upload) if the selected preset or worker cannot honour it; never drops the LoRA silently.
+function setPlateLora(card,modelType,profile){
+ if(!/^\s*<sks>/.test(String(card?.prompt||'')))return null;
+ if(modelType!==EDIT_2511_MODEL)throw Error('"'+(card.title||'Set plate')+'" starts with a <sks> camera pose for Qwen Image Edit 2511. Select that preset (Discover image presets), or delete the <sks> line to use another preset.');
+ const row=(profile?.camera_loras||[]).find(r=>r.id===ANGLES_2511.id);
+ if(!row)throw Error('This worker does not report the Qwen Image Edit 2511 Multiple-Angles LoRA (it predates camera-LoRA support). Restart the idle worker on current code, or delete the <sks> line to render without it.');
+ if(!row.installed)throw Error('The Multiple-Angles LoRA (multiple-angles-2511) is not installed in WanGP loras/qwen. Install qwen-image-edit-2511-multiple-angles-lora.safetensors, or delete the <sks> line to render without it.');
+ return{cameraLora:ANGLES_2511.id,cameraLoraStrength:Number(row.default_strength??SET_PLATE_LORA_STRENGTH)};
+}
 function cameraLoraFor(model){return CAMERA_LORA_GRAMMARS[model||SET_PLATE_MODEL]||null;}
 function caption2511(view){
  const g=ANGLES_2511;
@@ -120,7 +132,7 @@ function multiAngleCaption(view,model){
  if(!MULTI_ANGLE_ELEVATIONS.includes(elevation))throw Error('cameraView elevation must be one of: '+MULTI_ANGLE_ELEVATIONS.join(', ')+'.');
  return `${MULTI_ANGLE_TRIGGER} ${azimuth}, ${elevation}${view.closeUp===true?' close-up':''}`;
 }
-function setPlatePrompt(instruction,count=1,{literal=false,cameraView,model}={}){
+function setPlatePrompt(instruction,count=1,{literal=false,cameraView,model=SET_PLATE_MODEL}={}){
  const text=String(instruction||'').trim();
  if(!text)throw Error('Describe the new camera angle, e.g. "reverse angle, the entrance door now behind the camera".');
  if(model===EDIT_2511_MODEL){
@@ -151,5 +163,5 @@ function setPlateResolution(source,{width,height}={}){
  const fit=n=>Math.min(2048,Math.max(256,Math.round(n/32)*32));
  return w>=h?`1024x${fit(1024*h/w)}`:`${fit(1024*w/h)}x1024`;
 }
-return{SET_PLATE_MODEL,EDIT_2511_MODEL,ANGLES_2511,CAMERA_LORA_GRAMMARS,cameraLoraFor,MULTI_ANGLE_LORA,MULTI_ANGLE_TRIGGER,MULTI_ANGLE_AZIMUTHS,MULTI_ANGLE_ELEVATIONS,multiAngleCaption,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
+return{SET_PLATE_MODEL,QWEN21_MODEL,SET_PLATE_LORA_STRENGTH,setPlateLora,EDIT_2511_MODEL,ANGLES_2511,CAMERA_LORA_GRAMMARS,cameraLoraFor,MULTI_ANGLE_LORA,MULTI_ANGLE_TRIGGER,MULTI_ANGLE_AZIMUTHS,MULTI_ANGLE_ELEVATIONS,multiAngleCaption,setPlatePrompt,setPlateResolution,imageLicenseContext,MAX_INSPECTION_IMAGES,SELECTION_SYSTEM,INSPECTION_SYSTEM,reorderReferences,KINDS,boundSubjects,unclassified,manifest,subjectDraft,parsePlan,parseSelection,parseInspection,packet,SYSTEM,imageDefaults,task,applyGenerated};
 });

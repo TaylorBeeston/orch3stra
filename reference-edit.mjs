@@ -86,17 +86,23 @@ export async function referenceEdit(client,args){
    resolved.push({kind:'file',path,type,name:basename(path),bytes:info.size,...(await imageSize(path)||{})});
   }
   progress.stage='discover';
-  const info=await call('generation',{action:'discover',family:'image',modelType:model});
-  if(info.metadata?.model_type!==model||info.profile?.kind!=='reference_image')fail('MODEL_UNSUPPORTED','The worker does not expose '+model+' as a reference-image preset.');
-  if(!(info.profile.max_references>=sources.length))fail('MODEL_UNSUPPORTED',model+' accepts '+(info.profile.max_references||0)+' input image(s); this edit has '+sources.length+'. Choose an editing preset such as '+DEFAULT_EDIT_MODEL+' (10 inputs) or a Krea 2 *_edit preset (2 inputs).');
-  const lora=args.multiAngleLora===true,grammar=R.cameraLoraFor(model);
+  const unsupported=detail=>fail('MODEL_UNSUPPORTED',model===DEFAULT_EDIT_MODEL&&!args.model
+    ?'The default set-plate model '+model+' (Qwen Image Edit 2511) is not available on this worker'+(detail?': '+detail:'.')+' It needs a worker running this release (restart the idle bridge and worker) and the 2511 weights in WanGP. Nothing was uploaded. To use Qwen Image 2.1 instead, pass model:"'+R.QWEN21_MODEL+'".'
+    :'The worker does not expose '+model+' as a reference-image preset'+(detail?': '+detail:'.')+' Nothing was uploaded.');
+  let info;
+  try{info=await call('generation',{action:'discover',family:'image',modelType:model});}catch(e){if(e?.code==='MODEL_UNSUPPORTED')throw e;unsupported(e?.message);}
+  if(info.metadata?.model_type!==model||info.profile?.kind!=='reference_image')unsupported();
+  if(!(info.profile.max_references>=sources.length))fail('MODEL_UNSUPPORTED',model+' accepts '+(info.profile.max_references||0)+' input image(s); this edit has '+sources.length+'. Choose an editing preset such as '+R.QWEN21_MODEL+' (10 inputs), '+R.EDIT_2511_MODEL+' (3 inputs) or a Krea 2 *_edit preset (2 inputs).');
+  // Default: Qwen Image Edit 2511 carries its Multiple-Angles LoRA unless multiAngleLora:false. Qwen 2.1 stays opt-in.
+  const grammar=R.cameraLoraFor(model),lora=args.multiAngleLora??(model===R.EDIT_2511_MODEL);
   if(lora&&!grammar)fail('INVALID_ARGUMENTS','multiAngleLora is available for '+Object.keys(R.CAMERA_LORA_GRAMMARS).join(' and ')+' only.');
   if(args.multiAngleLoraStrength!==undefined&&!lora)fail('INVALID_ARGUMENTS','multiAngleLoraStrength needs multiAngleLora:true.');
+  if(lora&&args.multiAngleLora===undefined&&!args.cameraView&&!String(args.prompt).includes(grammar.trigger))fail('INVALID_ARGUMENTS','The default set plate (Qwen Image Edit 2511 + Multiple-Angles LoRA) needs cameraView, e.g. "right side view eye-level shot medium shot" (side and quarter angles work best; reverse angles are unreliable). Or pass multiAngleLora:false to render without the LoRA.');
   if(lora&&!args.cameraView&&!String(args.prompt).includes(grammar.trigger))fail('INVALID_ARGUMENTS','multiAngleLora needs cameraView (e.g. '+(model===R.EDIT_2511_MODEL?'"back view eye-level shot medium shot"':'"back view, eye-level shot"')+') or a prompt containing '+grammar.trigger+'.');
   const prompt=R.setPlatePrompt(args.prompt,sources.length,{literal:args.literalPrompt===true,cameraView:args.cameraView,model});
   const cameraEntry=lora?(info.profile.camera_loras||[]).find(row=>row.id===grammar.id):null;
-  const loraStatus=lora?{id:grammar.id,strength:args.multiAngleLoraStrength??cameraEntry?.default_strength??1,installed:cameraEntry?.installed===true,reportedByWorker:!!cameraEntry}:null;
-  if(lora&&!dryRun&&!loraStatus.installed)fail('LORA_UNAVAILABLE',cameraEntry?'The worker reports the Multiple-Angles LoRA as not installed in WanGP '+(model===R.EDIT_2511_MODEL?'loras/qwen':'loras/qwen21')+'.':'The running worker predates camera-LoRA support (no profile.camera_loras). Restart the idle bridge and worker on code with this change, then retry.',{multiAngleLora:loraStatus});
+  const loraStatus=lora?{id:grammar.id,strength:args.multiAngleLoraStrength??cameraEntry?.default_strength??(model===R.EDIT_2511_MODEL?R.SET_PLATE_LORA_STRENGTH:1),installed:cameraEntry?.installed===true,reportedByWorker:!!cameraEntry}:null;
+  if(lora&&!dryRun&&!loraStatus.installed)fail('LORA_UNAVAILABLE',cameraEntry?'The worker reports the Multiple-Angles LoRA as not installed in WanGP '+(model===R.EDIT_2511_MODEL?'loras/qwen':'loras/qwen21')+'. Nothing was uploaded. Install it, or pass multiAngleLora:false.':'The running worker predates camera-LoRA support (no profile.camera_loras). Nothing was uploaded. Restart the idle bridge and worker on code with this change, then retry (or pass multiAngleLora:false).',{multiAngleLora:loraStatus});
   const resolution=R.setPlateResolution(resolved[0],{width:args.width,height:args.height});
   const options={model,requestId,resolution,seed:args.seed??-1,steps:args.steps,guidance:args.guidance,accelerationProfile:args.accelerationProfile,...(lora?{cameraLora:grammar.id,cameraLoraStrength:loraStatus.strength}:{})};
   if(dryRun){
