@@ -10,7 +10,7 @@ FIXTURES = [
     "check-edit.mjs", "check-take-dependencies.mjs", "check-speech-review.mjs",
     "check-speech-quality.mjs",
     "check-agent-catalog.mjs", "check-agent-projects.mjs", "check-agent-media.mjs",
-    "check-agent-client.mjs", "check-agent-http.mjs",
+    "check-agent-client.mjs", "check-agent-http.mjs", "check-reference-edit.mjs",
 ]
 # Upstream-derived research material that must stay out of the public repository
 # until its licensing is reviewed (see THIRD_PARTY_NOTICES.md).

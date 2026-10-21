@@ -7,6 +7,7 @@ import {Readable,Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {toolDefinition,validateArguments,requiredEffects} from './agent-catalog.mjs';
+import {referenceEdit} from './reference-edit.mjs';
 
 export class AgentError extends Error {
   constructor(code,message,details={}){super(message);this.name='AgentError';this.code=code;this.details=details;}
@@ -53,6 +54,7 @@ export class AgentClient {
     if(name==='media_upload')return this.upload(args);
     if(name==='media_download')return this.download(args);
     if(name==='job_wait')return this.wait({...args,_allow});
+    if(name==='reference_edit')return referenceEdit(this,{...args,_allow});
     await this.authenticated(options.timeoutMs);
     const readActions=new Set(tool.readActions||[]);
     const mutation=!(tool.readOnly===true||readActions.has(args.action)||name==='worker'&&(args.method||'GET')==='GET');

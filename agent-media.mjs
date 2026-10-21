@@ -200,6 +200,7 @@ export class MediaTools{
    R.parsePlan(JSON.stringify({images:cards}),p);
    const acceleration=args.settings.accelerationProfile?info.image_profiles?.find(row=>row.id===args.settings.accelerationProfile):null;
    if(args.settings.accelerationProfile&&!acceleration)fail('Accelerator profile is not in the discovered model profile list. Arbitrary LoRA paths are not accepted.');
+   if(args.settings.cameraLora&&!info.profile?.camera_loras?.some(row=>row.id===args.settings.cameraLora&&row.installed))fail('Camera LoRA '+args.settings.cameraLora+' is not installed or not reported by this worker. Arbitrary LoRA paths are not accepted.');
    const settings={...args.settings,steps:acceleration?.steps??args.settings.steps??info.profile.default_steps,guidance:acceleration?.guidance??args.settings.guidance??info.profile.default_guidance,imageProfile:info.profile,licenseAccepted:true};
    const [width,height]=(settings.resolution||'1024x1024').split('x').map(Number);if([width,height].some(n=>!Number.isInteger(n)||n<256||n>2048||n%32))fail('Image resolution dimensions must be multiples of 32 from 256 to 2048.');
    if(cards.some(c=>c.referenceIds.length>info.profile.max_references))fail('Selected cards exceed the discovered model reference capacity.');

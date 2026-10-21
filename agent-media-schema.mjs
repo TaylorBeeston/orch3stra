@@ -8,7 +8,7 @@ const choice=(...values)=>({type:'string',enum:values});
 const project={projectId:id}, write={...project,expectedRevision:integer(1,Number.MAX_SAFE_INTEGER)};
 const branch=(action,properties={},required=Object.keys(properties))=>object({action:{const:action},...properties},['action',...required]);
 const imageCard=object({title:text(200),prompt:text(24000),referenceIds:{...ids,maxItems:10},subjectId:{type:'string',maxLength:128},windowIds:ids,purpose:text(),state:text(500),appearance:text(),retention:text()},['prompt','referenceIds']);
-const imageSettings=object({modelType:text(200),resolution:{type:'string',pattern:'^[0-9]+x[0-9]+$'},steps:integer(1,100),guidance:{type:'number',minimum:0,maximum:20},seed:integer(-1,2147483647),accelerationProfile:text(300),preserveFirstScene:bool},['modelType']);
+const imageSettings=object({modelType:text(200),resolution:{type:'string',pattern:'^[0-9]+x[0-9]+$'},steps:integer(1,100),guidance:{type:'number',minimum:0,maximum:20},seed:integer(-1,2147483647),accelerationProfile:text(300),preserveFirstScene:bool,cameraLora:{...text(64),pattern:'^[a-z0-9-]+$'},cameraLoraStrength:{type:'number',minimum:0,maximum:2}},['modelType']);
 const scene=object({name:text(200),windowIds:ids,bankIds:ids,location:{type:'string',maxLength:4000},time:{type:'string',maxLength:500},states:{type:'object',additionalProperties:{type:'string',maxLength:500}}},['name','windowIds']);
 const annotation=object({subjectIds:ids,roles:list(choice('identity','wardrobe','setting','prop','angle','pose','style'),7),states:list(text(500),100),angles:list(text(500),100),quality:integer(0,3),approved:bool},['subjectIds','roles']);
 const refs=[
