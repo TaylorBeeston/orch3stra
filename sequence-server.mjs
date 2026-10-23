@@ -219,6 +219,8 @@ export class SequenceCoordinator {
     if(this.backendMode!=='headless')throw Error('New managed runs require the bounded-capable headless worker. Existing saved sequences remain compatible.');
     const health=await this.api({backendMode:'headless'},'/health');
     if(health.capabilities?.bounded_continuation!==1)throw Error('An idle worker upgrade is required for bounded managed continuation. No generation submitted.');
+    if(p.windows.some(w=>w.soundtrack?.assetId)&&health.capabilities?.soundtrack_slices!==1)throw Error('Kept soundtracks need a worker with the soundtrack_slices capability. Restart the WanGP worker on this orch3stra version. No generation submitted.');
+    if(p.windows.some(w=>H3.pool({...p,mode:'independent'},w).filter(a=>a.kind==='audio').length>2)&&health.capabilities?.audio_references!==3)throw Error('Three voice references need a worker with the audio_references=3 capability. Restart the WanGP worker on this orch3stra version. No generation submitted.');
     if(p.continuation){
       if(this.backendMode!=='headless')throw Error('Edited-prefix branches require the headless backend.');
       const c=p.continuation;if(!c.jobId||!c.outputId||!Number.isSafeInteger(c.keepFrames)||c.keepFrames<1)throw Error('Invalid continuation prefix.');
@@ -229,7 +231,7 @@ export class SequenceCoordinator {
     if(p.settings.spatial_upsampling)throw Error('Managed mode requires generation-time upscaling off. Upscale the completed film separately.');
     const referenceConsent=await this.referenceAgent?.preflightProject(p);
     const errors=H3.validate(p,true).filter(x=>x.level==='error');if(errors.length)throw Error(errors[0].message);
-    for(const id of new Set(p.windows.flatMap(w=>[...H3.usedIds(p,w)])))await stat(this.store.blobPath(id));
+    for(const id of H3.mediaIds(p))await stat(this.store.blobPath(id));
     if(this.probe===inspectVideo)await exec(process.env.FFPROBE_BIN||'ffprobe',['-version'],{timeout:10000});
     if(ownedId&&!/^seq_[a-f0-9]{32}$/.test(ownedId))throw Error('Invalid managed ownership ID.');const id=ownedId||'seq_'+randomBytes(16).toString('hex');if(this.runs.has(id))throw Error('Owned sequence already exists; reconcile instead of replaying.');const r={id,name:p.name,url,backendMode:this.backendMode,layout:'bounded-v1',project:{...p,jobs:[],variants:[],voiceWorkshops:[]},plan:S.managedPlan(p),status:'running',phase:'preparing',index:0,createdAt:new Date().toISOString(),outputs:[],submissions:[],pauseAfterWindow:false,cancelRequested:false,events:[]};
     r.shotPlan=Continuity.shotPlan(p);r.appearanceAnchors={};
@@ -311,7 +313,8 @@ export class SequenceCoordinator {
             }else this.event(r,'appearance-skipped',admission.reason);
           }
         }else if(shot)this.event(r,'appearance-skipped',shot.internalCuts.length?'This window contains a camera cut; appearance protection resets for the outgoing shot.':shot.reason);
-        for(const a of H3.pool(q,q.windows[0])){if(!await this.prepareCheckpoint(r))break;mapping.set(a.id,a.id===appearance?.id?'h3appearance:'+appearance.jobId+':'+appearance.outputId:await this.upload(r,this.store.blobPath(a.id),a.name,a.type));}
+        const soundtrack=q.windows[0].soundtrack?.assetId&&q.assets.find(a=>a.id===q.windows[0].soundtrack.assetId);
+        for(const a of [...H3.pool(q,q.windows[0]),...(soundtrack?[soundtrack]:[])]){if(!await this.prepareCheckpoint(r))break;mapping.set(a.id,a.id===appearance?.id?'h3appearance:'+appearance.jobId+':'+appearance.outputId:await this.upload(r,this.store.blobPath(a.id),a.name,a.type));}
         if(!await this.prepareCheckpoint(r))continue;
         const tasks=H3.tasks(q,id=>mapping.get(id)),plan=H3.renderPlan(q),payload={tasks,plan,project:r.name+' · '+row.title,project_id:r.project.id,request_id:r.id+'_'+r.index};
         if(bounded){

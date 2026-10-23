@@ -14,7 +14,7 @@ const fail = message => {throw agentError('INVALID_ARGUMENT',message);};
 const copy = H.clone;
 const own = (value,key) => Object.hasOwn(value,key);
 const pick = (value,keys) => Object.fromEntries(keys.filter(key=>own(value,key)).map(key=>[key,copy(value[key])]));
-const WINDOW_FIELDS = ['title','frames','overlap','subjectIds','assetIds','casting','definitions','summary','retention','detail','soundscape','music','entry','exit','notes','exceptionalReason','exceptionalRisk','continuity'];
+const WINDOW_FIELDS = ['title','frames','overlap','subjectIds','assetIds','casting','definitions','summary','retention','detail','soundscape','music','entry','exit','notes','exceptionalReason','exceptionalRisk','continuity','soundtrack'];
 const TEXT_FIELDS = ['title','summary','detail','soundscape','music','entry','exit','notes'];
 const getWindow = (p,id) => p.windows.find(w=>w.id===id) || fail('Unknown window. Refresh project get for current window IDs.');
 const getSubject = (p,id) => p.subjects.find(s=>s.id===id) || fail('Unknown subject. Register it with subjects upsert first.');
@@ -41,8 +41,21 @@ function authorWindow(p,old,value) {
   const unknown=Object.keys(value).filter(k=>!WINDOW_FIELDS.includes(k));
   if(unknown.length)fail('Unsupported window fields: '+unknown.join(', '));
   const w={...old,...pick(value,WINDOW_FIELDS)};
+  if(own(value,'soundtrack'))w.soundtrack=soundtrackValue(p,value.soundtrack);
   cast(p,w);
   return w;
+}
+/** Kept soundtrack (WanGP 'AS'): an owned, generation-allowed audio asset. null clears it. */
+function soundtrackValue(p,value) {
+  if(value===null)return null;
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['assetId','startSeconds'].includes(k)))fail('soundtrack must be {assetId, startSeconds?} or null.');
+  const a=p.assets.find(a=>a.id===value.assetId);
+  if(!a)fail('Unknown soundtrack asset. Import the audio into this project first.');
+  if(a.kind!=='audio')fail('Soundtrack asset '+a.name+' is not audio.');
+  if(!H.generationAllowed(a))fail('Soundtrack asset '+a.name+' is excluded from generation.');
+  if(value.startSeconds===undefined||value.startSeconds===null)return {assetId:a.id};
+  if(!Number.isFinite(value.startSeconds)||value.startSeconds<0)fail('Soundtrack startSeconds must be zero or later.');
+  return {assetId:a.id,startSeconds:value.startSeconds};
 }
 function assertTiming(p,changed) {
   const rows=H.schedule(p);
@@ -222,6 +235,12 @@ export class ProjectTools {
       const w=authorWindow(p,old,a.window),index=p.windows.findIndex(x=>x.id===w.id);
       if(index<0)p.windows.push(w);else p.windows[index]=w;
       assertTiming(p,[w]);
+    } else if(a.action==='soundtrack') {
+      // The first listed window anchors the slice; later ones continue it, so linked windows share one contiguous track.
+      const chosen=windows(p,a.windowIds);if(!chosen.length)fail('Choose one or more windows.');
+      chosen.forEach((w,i)=>{w.soundtrack=a.assetId===null?null:soundtrackValue(p,i===0&&a.startSeconds!==undefined?{assetId:a.assetId,startSeconds:a.startSeconds}:{assetId:a.assetId});});
+      const saved=await saveProject(this.studio,record,p),slices=H.soundtrackSlices(p);
+      return {...saved,soundtrack:p.windows.map((w,i)=>({windowId:w.id,title:w.title,slice:slices[i]})).filter(x=>a.windowIds.includes(x.windowId)),issues:H.soundtrackProblems(p)};
     } else if(a.action==='insert') {
       if(a.anchorId!==null)getWindow(p,a.anchorId);
       const added=a.windows.map(value=>authorWindow(p,H.newWindow(),value));

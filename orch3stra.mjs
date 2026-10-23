@@ -17,6 +17,7 @@ const HELP=`Orch3stra agent tools (Node 22+, no npm install)
   node orch3stra.mjs call TOOL --json JSON          Call a tool (@file or - for stdin)
   node orch3stra.mjs wait TOOL JOB_ID               Observe an existing job, never retry
   node orch3stra.mjs reference editImage --json JSON Set plate: new angle of the same place (reference_edit)
+  node orch3stra.mjs soundtrack set --json JSON     Keep an owned audio asset as window soundtrack (WanGP AS)
   node orch3stra.mjs upload FILE --type MIME        Upload real media (immutable key)
   node orch3stra.mjs download API_URL --output FILE Download media without overwriting
   node orch3stra.mjs pair --password-stdin --cookie-file FILE
@@ -122,6 +123,7 @@ export async function main(argv=process.argv.slice(2)){
     case 'call':if(rest.length<1||rest.length>2)throw new AgentError('INVALID_ARGUMENTS','call needs TOOL and --json JSON (or a positional JSON object).');result=await client.call(rest[0],allowed(flags,await jsonInput(flags.json??rest[1])));break;
     case 'wait':if(rest.length!==2)throw new AgentError('INVALID_ARGUMENTS','wait needs TOOL JOB_ID.');result=await client.call('job_wait',allowed(flags,{tool:rest[0],id:rest[1],...(flags['timeout-ms']?{timeoutMs:Number(flags['timeout-ms'])}:{}),...(flags['interval-ms']?{intervalMs:Number(flags['interval-ms'])}:{})}));break;
     case 'reference':if(rest[0]!=='editImage'||rest.length>2)throw new AgentError('INVALID_ARGUMENTS','Use: reference editImage --json JSON (see describe reference_edit).');result=await client.call('reference_edit',allowed(flags,await jsonInput(flags.json??rest[1])));break;
+    case 'soundtrack':if(rest[0]!=='set'||rest.length>2)throw new AgentError('INVALID_ARGUMENTS','Use: soundtrack set --json JSON (timeline action soundtrack).');result=await client.call('timeline',allowed(flags,{...await jsonInput(flags.json??rest[1]),action:'soundtrack'}));break;
     case 'upload':if(rest.length!==1||!flags.type)throw new AgentError('INVALID_ARGUMENTS','upload needs FILE --type MIME.');result=await client.call('media_upload',allowed(flags,{file:rest[0],type:flags.type,...(flags.key?{key:flags.key}:{}),...(flags.destination?{destination:flags.destination}:{})}));break;
     case 'download':if(rest.length!==1||!flags.output)throw new AgentError('INVALID_ARGUMENTS','download needs API_URL --output FILE.');result=await client.call('media_download',allowed(flags,{url:rest[0],output:flags.output}));break;
     default:throw new AgentError('INVALID_ARGUMENTS','Unknown command '+command+'. Use --help.');

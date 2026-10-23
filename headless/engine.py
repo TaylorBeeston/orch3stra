@@ -346,7 +346,41 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
             # Immutable owned archive survives gallery cleanup and service restarts.
             context_path = self.bounded_source(record, source['keepFrames'], bounded['context_frames']) if bounded else record['path']
             result.update(video_source=context_path, image_prompt_type='V', keep_frames_video_source=str(bounded['context_frames'] if bounded else source['keepFrames']))
+        soundtrack = task.get('_director_soundtrack')
+        if soundtrack is not None or result.get('audio_prompt_type') == 'AS':
+            if not isinstance(soundtrack, dict) or set(soundtrack) != {'start_seconds', 'duration_seconds'} or result.get('audio_prompt_type') != 'AS':
+                raise ValueError("A kept soundtrack needs audio_prompt_type 'AS' and a _director_soundtrack slice.")
+            if not result.get('audio_guide') or result.get('audio_guide2') or result.get('audio_guide3'):
+                raise ValueError('A kept soundtrack uses audio_guide only, with no other audio references.')
+            prefix = int(result.get('keep_frames_video_source') or 0)
+            result['audio_guide'] = self.soundtrack_slice(result['audio_guide'], soundtrack['start_seconds'], soundtrack['duration_seconds'], prefix)
         return result
+
+    def soundtrack_slice(self, path, start, duration, prefix_frames=0):
+        """Cut an owned upload into the kept 'AS' track. WanGP aligns it with source-video frame 0,
+        so the cut begins prefix_frames earlier (leading silence when that is before the asset start)."""
+        if any(type(x) not in (int, float) or not math.isfinite(x) for x in (start, duration)) or start < 0 or not 0 < duration <= 3600:
+            raise ValueError('Invalid soundtrack slice.')
+        if Path(path).suffix.lower() not in AUDIO_EXTENSIONS:
+            raise ValueError('A kept soundtrack must be an uploaded audio file.')
+        meta = audio_probe(path, max_duration=86400)
+        if start + duration > meta['duration'] + 1e-3:
+            raise ValueError('Soundtrack slice %.3f-%.3fs exceeds the %.3fs asset.' % (start, start + duration, meta['duration']))
+        lead = start - prefix_frames / 24
+        pad, offset, total = max(0.0, -lead), max(0.0, lead), prefix_frames / 24 + duration
+        key = hashlib.sha256(json_text([fingerprint(path), round(offset, 6), round(pad, 6), round(total, 6)]).encode()).hexdigest()
+        dest = self.root/'soundtracks'/(key+'.wav')
+        if not dest.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_name(dest.stem+'.'+uuid.uuid4().hex+'.tmp.wav')
+            filters = ('adelay=%d:all=1,' % round(pad*1000) if pad else '') + 'apad'
+            subprocess.run([os.environ.get('FFMPEG_BIN', 'ffmpeg'), '-v', 'error', '-nostdin', '-ss', '%.6f' % offset, '-i', str(path),
+                            '-map', '0:a:0', '-af', filters, '-t', '%.6f' % total, '-c:a', 'pcm_s16le', str(tmp)],
+                           check=True, capture_output=True, timeout=120)
+            os.replace(tmp, dest)
+        if abs(audio_probe(dest, max_duration=total + 1)['duration'] - total) > .05:
+            raise ValueError('Soundtrack slice has the wrong length.')
+        return str(dest)
 
     def resolve_postprocess(self, task):
         """Narrow late-upscale task over an immutable owned upload. No arbitrary paths."""
@@ -917,7 +951,7 @@ class HeadlessEngine(ReferenceImageSupport, ReferenceVoiceSupport, MusicSupport)
     def health(self):
         with self.lock:
             return {'app': 'h3-director-wangp', 'version': VERSION, 'backend': 'headless',
-                    'capabilities': {'bounded_continuation': 1, 'bounded_continuation_contract': 'verified-return-media-required', 'upstream_patch_required': False, 'bounded_viewing_mismatch': 'preserve-and-explicit-saved-footage-suffix', 'h3_settings_compatibility': 1, 'music': callable(getattr(self.session, 'submit_task', None)), 'music_architecture': 'yue2', 'reference_voices': callable(getattr(self.session, 'submit_task', None)), 'reference_voice_architecture': 'qwen3_tts_voicedesign', 'reference_images': callable(getattr(self.session, 'submit_task', None)), 'reference_image_prompt_mode': 'FG', 'reference_image_architecture': 'qwen_image_21_7B', 'late_postprocess': callable(getattr(self.session, 'submit_media_postprocessing', None)), 'postprocess_max_frames': 3000},
+                    'capabilities': {'bounded_continuation': 1, 'bounded_continuation_contract': 'verified-return-media-required', 'upstream_patch_required': False, 'bounded_viewing_mismatch': 'preserve-and-explicit-saved-footage-suffix', 'h3_settings_compatibility': 1, 'soundtrack_slices': 1, 'audio_references': 3, 'music': callable(getattr(self.session, 'submit_task', None)), 'music_architecture': 'yue2', 'reference_voices': callable(getattr(self.session, 'submit_task', None)), 'reference_voice_architecture': 'qwen3_tts_voicedesign', 'reference_images': callable(getattr(self.session, 'submit_task', None)), 'reference_image_prompt_mode': 'FG', 'reference_image_architecture': 'qwen_image_21_7B', 'late_postprocess': callable(getattr(self.session, 'submit_media_postprocessing', None)), 'postprocess_max_frames': 3000},
                     'installed_api': {'task_submission': 'available' if callable(getattr(self.session, 'submit_task', None)) else 'unsupported' if self.session is not None else 'unknown', 'bounded_decoded_media': 'verified' if callable(getattr(self.session, 'submit_task', None)) and getattr(self, 'bounded_api_verified', False) else 'unknown' if callable(getattr(self.session, 'submit_task', None)) or self.session is None else 'unsupported', 'reference_models': 'discover-required', 'bounded_note': 'The legacy bounded_continuation flag describes bridge support. Session readiness alone does not verify decoded audio/video artifacts; strict per-output checkpoint checks remain required.'},
                     'instance': str(self.root), 'runtime_state': self.runtime_state, 'runtime_error': self.runtime_error,
                     'runtime': self.runtime_info, 'browser_required': False, 'plugin_required': False,

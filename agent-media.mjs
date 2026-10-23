@@ -183,7 +183,9 @@ export class MediaTools{
    if(profile?.inference_mode!==p.inferenceMode)fail('Saved inference mode differs from the actual discovered video profile. Configure the project explicitly.');
    const issues=H.validate(p,true).filter(i=>i.level==='error');if(issues.length)throw agentError('PROJECT_NOT_RENDERABLE','Resolve the saved project validation errors before preparation.',400,{issues});
    const settings=H.inferenceSettings(p);if(!profile.samplers?.includes(settings.sample_solver)||!Number.isInteger(settings.num_inference_steps)||settings.num_inference_steps<1||settings.num_inference_steps>200||!Number.isInteger(settings.guidance_phases)||settings.guidance_phases<1||settings.guidance_phases>profile.max_phases)fail('Saved inference settings do not match the discovered model profile.');
-   const used=[...new Set(p.windows.flatMap(w=>[...H.usedIds(p,w)]))];
+   const used=[...H.mediaIds(p)];
+   const caps=health.capabilities||{};if(p.windows.some(w=>w.soundtrack?.assetId)&&caps.soundtrack_slices!==1)fail('Kept soundtracks need a worker with the soundtrack_slices capability. Restart the WanGP worker on this orch3stra version.');
+   if(p.windows.some(w=>H.pool(p,w).filter(a=>a.kind==='audio').length>2)&&caps.audio_references!==3)fail('Three voice references need a worker with the audio_references=3 capability. Restart the WanGP worker on this orch3stra version.');
    if(p.mode==='managed'){
     if(health.capabilities?.bounded_continuation!==1)fail('Managed video requires the actual worker bounded-continuation capability.');
     if(prepare)for(const id of used)await this.verifiedBlob(id,assetOf(p,id));

@@ -242,7 +242,7 @@ async function submitWanGP(propagateError=false){
     const assertIntent=()=>{intentLedger.assert(intent.id);if(project!==targetProject||P.config.wangpUrl!==destination)throw Error('Project or destination changed; no generation submitted.');};assertIntent();
     const problems=H3.validate(renderSnapshot,true).filter(x=>x.level==='error');if(problems.length)throw Error(problems[0].message);
     const health=await P.wangp('/health');if(health.app!=='h3-director-wangp')throw Error('Wrong endpoint. Connect to the included adapter, not the bare Gradio URL.');
-    const used=new Set(renderSnapshot.windows.flatMap(w=>[...H3.usedIds(renderSnapshot,w)])),mapping=new Map();
+    const used=H3.mediaIds(renderSnapshot),mapping=new Map();
     for(const a of renderSnapshot.assets.filter(a=>used.has(a.id))){log.textContent=`Uploading ${mapping.size+1} / ${used.size}: ${a.name}…`;activity?.update(log.textContent);const blob=await Store.getBlob(a.id);if(!blob)throw Error('Missing source file: '+a.name);const response=await P.upload(a,blob);if(!response.media_id)throw Error('Adapter upload returned no media ID.');mapping.set(a.id,response.media_id);}
     if(P.config.wangpUrl!==destination)throw Error('Adapter destination changed during upload; no generation was submitted.');
     const tasks=H3.tasks(renderSnapshot,id=>mapping.get(id)),plan=H3.renderPlan(renderSnapshot),payload={tasks,project:renderSnapshot.name,project_id:renderSnapshot.id,request_id:intent.requestId,plan,...(P.headless?{snapshot:{...renderSnapshot,jobs:[],variants:[],voiceWorkshops:[]}}:{})};
