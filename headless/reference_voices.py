@@ -95,4 +95,4 @@ class ReferenceVoiceSupport:
                 'temperature': 0.9, 'top_k': 50, 'repeat_generation': 1, 'video_length': 0,
                 'num_inference_steps': 0, 'negative_prompt': '', 'multi_prompts_gen_type': 'FG',
                 'prompt_enhancer': '', 'audio_prompt_type': '', 'video_prompt_type': '', 'image_prompt_type': '',
-                'audio_guide': None, 'audio_guide2': None, 'image_refs': [], 'video_source': None}
+                'audio_guide': None, 'audio_guide2': None, 'audio_guide3': None, 'image_refs': [], 'video_source': None}

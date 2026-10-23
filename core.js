@@ -325,7 +325,7 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
         poolChecked.add(key); const counts={image:0,video:0,audio:0}; assets.forEach(a=>counts[a.kind]++);
         if(counts.image>9) add('error','WanGP supports at most 9 image references per task.',w.id);
         if(counts.video>2) add('error','This WanGP H3 path supports at most 2 video references per task.',w.id);
-        if(counts.audio>2) add('error','This WanGP H3 path supports at most 2 standalone audio references per task.',w.id);
+        if(counts.audio>3) add('error','This WanGP H3 path supports at most 3 standalone audio references per task.',w.id);
         if(assets.length>12) add('error','H3 accepts at most 12 reference files per task.',w.id);
         if(counts.audio>counts.image+counts.video) add('error','WanGP requires at least as many image/video references as audio references.',w.id);
         for(const a of assets) {
@@ -385,9 +385,9 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
   function mediaSettings(p,w,resolve=id=>id) {
     const assets=pool(p,w),images=assets.filter(a=>a.kind==='image'),videos=assets.filter(a=>a.kind==='video'),audios=assets.filter(a=>a.kind==='audio');
     return {image_prompt_type:'',image_start:null,image_end:null,video_source:null,
-      video_prompt_type:(images.length?'I':'')+(videos.length?(videos.length===2?'V+-U':'V-U'):''),audio_prompt_type:audios.length===2?'AB':audios.length?'A':'',
+      video_prompt_type:(images.length?'I':'')+(videos.length?(videos.length===2?'V+-U':'V-U'):''),audio_prompt_type:['','A','AB','ABD'][audios.length],
       image_refs:images.map(a=>resolve(a.id)),video_guide:videos[0]?resolve(videos[0].id):null,video_guide2:videos[1]?resolve(videos[1].id):null,
-      audio_guide:audios[0]?resolve(audios[0].id):null,audio_guide2:audios[1]?resolve(audios[1].id):null};
+      audio_guide:audios[0]?resolve(audios[0].id):null,audio_guide2:audios[1]?resolve(audios[1].id):null,audio_guide3:audios[2]?resolve(audios[2].id):null};
   }
   function inferenceSettings(p) {
     if(p.inferenceMode!=='standard') return {num_inference_steps:8,sample_solver:'euler',guidance_phases:1,guidance_scale:1,flow_shift:12};

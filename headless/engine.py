@@ -34,14 +34,14 @@ VERSION = '2.3.0'
 TERMINAL = {'completed', 'failed', 'cancelled'}
 EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif', '.avif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wav', '.mp3', '.m4a', '.flac', '.ogg', '.aac', '.opus'}
 VIDEO_EXTENSIONS = {'.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'}
-MEDIA_KEYS = {'image_refs', 'video_guide', 'video_guide2', 'audio_guide', 'audio_guide2'}
+MEDIA_KEYS = {'image_refs', 'video_guide', 'video_guide2', 'audio_guide', 'audio_guide2', 'audio_guide3'}
 CLEAR_MEDIA = {'image_start', 'image_end', 'video_source', 'video_mask', 'image_guide', 'image_mask', 'audio_source', 'spatial_upsampler_reference_images', 'replace_voice_sample', 'replace_voice_sample2'}
 
 
 # These names are not Director H3 conditioning inputs. Older workers injected both
 # as None while clearing unused attachments. WanGP's strict settings validator
 # rejects even unset, unknown keys. Never rename audio_file to audio_scale: the
-# latter is numeric strength; voices belong in audio_guide/audio_guide2.
+# latter is numeric strength; voices belong in audio_guide/audio_guide2/audio_guide3.
 LEGACY_EMPTY_MEDIA = ('mask', 'audio_file')
 
 
