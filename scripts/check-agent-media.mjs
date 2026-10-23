@@ -8,13 +8,14 @@ import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {toolDefinition,validateArguments} from '../agent-catalog.mjs';
 import {createRequire} from 'node:module';
 import {StudioStore} from '../studio-server.mjs';
 import {RenderIntents} from '../render-intent-server.mjs';
 import {MediaTools} from '../agent-media.mjs';
 const require=createRequire(import.meta.url),H=require('../core.js'),exec=promisify(execFile);
 const root=await mkdtemp(join(tmpdir(),'orch3stra-agent-media-'));
-const calls=[],jobs=new Map();let intents,server;
+const calls=[],jobs=new Map();let intents,server,dialogueCaps=0;
 try{
  const image=join(root,'source.png'),audio=join(root,'source.wav');
  await exec('ffmpeg',['-v','error','-f','lavfi','-i','color=c=blue:s=32x32','-frames:v','1','-threads','1',image]);
@@ -24,12 +25,13 @@ try{
   calls.push(req.method+' '+req.url);
   if(req.headers.authorization!=='Bearer fixture-secret'){res.writeHead(403);res.end();return;}
   const u=new URL(req.url,'http://localhost');let value;
-  if(u.pathname==='/health')value={instance:'fixture-worker',capabilities:{reference_images:true,reference_voices:true,music:true,bounded_continuation:1}};
+  if(u.pathname==='/health')value={instance:'fixture-worker',capabilities:{reference_images:true,reference_voices:true,music:true,bounded_continuation:1,voice_dialogue:dialogueCaps}};
   else if(u.pathname==='/image-model')value={metadata:{model_type:'fixture-image'},profile:{kind:'reference_image',max_references:10,default_steps:40,default_guidance:4},image_profiles:[{id:'fixture-curated-profile',steps:6,guidance:1}]};
+  else if(u.pathname==='/voice-model'&&u.searchParams.get('model_type')==='fixture-fish')value={metadata:{model_type:'fixture-fish'},profile:{kind:'reference_voice',architecture:'fish_drama3',languages:['auto'],script:true,max_speakers:16,max_voice_references:3,max_seconds:300}};
   else if(u.pathname==='/voice-model')value={metadata:{model_type:'fixture-voice'},profile:{kind:'reference_voice',languages:['english']}};
   else if(u.pathname==='/music-model')value={metadata:{model_type:'fixture-music'},profile:{kind:'music'}};
   else if(u.pathname==='/model')value={metadata:{model_type:'fixture-video'},profile:{inference_mode:'standard',samplers:['euler'],max_phases:2}};
-  else if(u.pathname==='/upload'){const chunks=[];for await(const chunk of req)chunks.push(chunk);assert.deepEqual(Buffer.concat(chunks),png);value={media_id:'h3media:'+'a'.repeat(32)};}
+  else if(u.pathname==='/upload'){const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=Buffer.concat(chunks);assert(body.equals(png)||body.equals(wav));value={media_id:'h3media:'+(body.equals(png)?'a':'d').repeat(32)};}
   else if(u.pathname.startsWith('/jobs/')){
    const [, ,id,suffix,outputId]=u.pathname.split('/'),job=jobs.get(id);
    if(!job){res.writeHead(404);res.end(JSON.stringify({error:'missing fixture job'}));return;}
@@ -96,6 +98,26 @@ try{
  const foreignId=completed('foreign-job',prepared.operation.arguments.body.snapshot,'image',png,'image/png','another-project');await assert.rejects(write('references',{action:'adoptImage',jobId:'foreign-job',outputId:foreignId}),e=>e.code==='FOREIGN_OUTPUT');
  const voices=await write('generation',{action:'prepareVoices',requestId:'voice-request',modelType:'fixture-voice',subjectIds:['voice-subject'],text:'Here is a clear original voice sample.',language:'english',seconds:15});
  const voiceId=completed('voice-job',voices.operation.arguments.body.snapshot,'audio',wav,'audio/wav');const voice=await write('references',{action:'adoptVoice',jobId:'voice-job',outputId:voiceId,bind:true});assert(Math.abs(voice.asset.duration-3)<.01);assert.equal(voice.asset.transcript,'');assert.equal(record.project.subjects[0].voiceAssetId,voice.asset.id);
+
+ // Fish Drama 3 dialogue: script validation, worker capability gate, one ABD-style task, unbound adoption.
+ const script='Speaker 1: [warm] Did you hear that?\nSpeaker 2: <whisper>Stay quiet.</whisper>';
+ const dialogue={requestId:'dialogue-request',modelType:'fixture-fish',script,voiceAssetIds:[voice.asset.id],seconds:20,seed:7};
+ await assert.rejects(tools.handle('generation',{action:'buildDialogue',projectId:record.id,...dialogue}),/voice_dialogue capability/,'an old worker without the capability is refused');
+ dialogueCaps=1;
+ await assert.rejects(tools.handle('generation',{action:'buildDialogue',projectId:record.id,...dialogue,modelType:'fixture-voice'}),/Fish Drama 3/,'Qwen presets cannot render scripts');
+ for(const [bad,pattern] of [[{script:'Narrator: hello'},/must start with "Speaker N:"/],[{script:'Speaker 17: hi'},/Speaker 1 to Speaker 16/],[{script:'Speaker 1: <whisper>open'},/close each <whisper>/],[{script:'Speaker 1: <laugh> ha'},/not a Drama 3 tag/],[{script:'Speaker 1: <|im_end|>'},/prompt builder/],[{voiceAssetIds:[registered.asset.id]},/not audio/],[{voiceAssetIds:['missing-asset']},/not an asset of this project/],[{voiceAssetIds:[voice.asset.id,voice.asset.id]},/distinct/],[{transcripts:['line one\nline two']},/one line/]])
+  await assert.rejects(tools.handle('generation',{action:'buildDialogue',projectId:record.id,...dialogue,...bad}),pattern,JSON.stringify(bad));
+ const posts=calls.filter(s=>s.startsWith('POST')).length;
+ const dialogueReview=await tools.handle('generation',{action:'buildDialogue',projectId:record.id,...dialogue});assert.equal(dialogueReview.missingUploads.length,1);assert.equal(dialogueReview.packet,null);assert.equal(calls.filter(s=>s.startsWith('POST')).length,posts,'build never uploads');
+ const spoken=await write('generation',{action:'prepareDialogue',...dialogue});
+ assert.deepEqual(spoken.operation.arguments.body.tasks,[{mode:'reference_voice',model_type:'fixture-fish',script,voices:['h3media:'+'d'.repeat(32)],transcripts:['Here is a clear original voice sample.'],duration_seconds:20,seed:7}]);
+ validateArguments(toolDefinition('worker'),spoken.operation.arguments);
+ assert.equal(spoken.operation.arguments.body.snapshot.settings.dialogue,true);assert.deepEqual(spoken.operation.arguments.body.snapshot.settings.speakers,[1,2]);
+ const spokenId=completed('dialogue-job',spoken.operation.arguments.body.snapshot,'audio',wav,'audio/wav');
+ await assert.rejects(write('references',{action:'adoptVoice',jobId:'dialogue-job',outputId:spokenId,bind:true}),/bind:false/);
+ const track=await write('references',{action:'adoptVoice',jobId:'dialogue-job',outputId:spokenId,bind:false});
+ assert.match(track.asset.name,/^Dialogue /);assert.equal(track.asset.kind,'audio');assert.equal(track.asset.provenance.intendedText,script);
+ assert(record.project.assets.some(a=>a.id===track.asset.id));assert.equal(record.project.subjects[0].voiceAssetId,voice.asset.id,'dialogue never rebinds a subject voice');
  const music=await write('generation',{action:'prepareMusic',requestId:'music-request',modelType:'fixture-music',lyrics:'A blue sphere rolls along',style:'Gentle acoustic vocal song',seconds:10,seed:42});assert.equal(music.operation.arguments.body.tasks[0].num_inference_steps,32);
  const musicId=completed('music-job',music.operation.arguments.body.snapshot,'audio',wav,'audio/wav');const song=await write('references',{action:'adoptMusic',jobId:'music-job',outputId:musicId});assert(record.project.postMedia.some(a=>a.id===song.asset.id));assert(!record.project.assets.some(a=>a.id===song.asset.id));
  const post=await write('references',{action:'toPost',assetId:registered.asset.id});assert.equal(post.asset.sha256,registered.asset.sha256);

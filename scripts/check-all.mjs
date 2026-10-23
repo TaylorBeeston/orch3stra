@@ -11,6 +11,7 @@ const jobs=['check-nemotron-install.mjs','check-provider-startup.cjs','check-sto
 for(const name of ['catalog','projects','media','client','http'])jobs.push([process.execPath,['scripts/check-agent-'+name+'.mjs']]);
 jobs.push([process.execPath,['scripts/check-reference-edit.mjs']]);
 jobs.push([process.execPath,['scripts/check-audio-routes.mjs']]);
+jobs.push([process.execPath,['scripts/check-voice-dialogue.mjs']]);
 jobs.push([python,['-u','-m','unittest','discover','-s','tests']]);
 if(process.argv.includes('--integration')){jobs.push([python,['-u','tests/gradio_dispatch_check.py']]);for(const n of ['offline','workflows','direction','soundscapes','dialogue','studio','headless','ai','sequences','progress','editor','references','film','scenes','post','coverage','render_selection','workspace','sounds','reference_progress','speech_review','speech_quality','crop','generation_exclusion','music','confirm','timing','planner_timing','media_security','set_plate'])jobs.push([python,['-u','tests/browser_'+n+'_check.py']]);}
 const testEnv={...process.env};for(const key of Object.keys(testEnv))if(key.startsWith('H3_'))delete testEnv[key];testEnv.H3_WANGP_BACKEND='legacy';testEnv.H3_VOICE_PYTHON=python; // Explicit test interpreter; never use the user's WanGP env.
