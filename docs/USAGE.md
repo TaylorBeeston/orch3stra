@@ -182,6 +182,72 @@ node orch3stra.mjs reference editImage --allow network --json '{
 
 A reverse angle is `back view, eye-level shot`; a side angle is `right side view` or `left side view`; an overhead plate is `top-down shot`. With `literalPrompt: true`, write the prompt yourself and start it with `<mva> …`. The card recommends a strength of 0.8–1.0 (the default is 1.0). Lower it toward 0.8 if the result copies the source view instead of moving the camera. The LoRA was trained on Objaverse objects at 512², so rooms and large canvases are outside its training data. Check results by eye. It stays opt-in on Qwen 2.1 (pass `multiAngleLora: true`). In the first room test (Oct 2026: a circular operating theatre, 288x512, Viggle 6-step, seed 7, `back view, eye-level shot`), the LoRA did not produce a reverse angle of the room. At 1.0 it turned the central apparatus into an isolated object on a grey studio background, which is its Objaverse training look, and the room was gone. At 0.8 (back view and left side view) the camera stayed frontal; the result only mirrored and reshuffled props (shelves and charts swapped sides). Without the LoRA, Qwen Image 2.1 returned an almost exact copy of the source. Neither path is a dependable reverse-angle tool for rooms yet. Reshoot single props or characters with it, or test lower strengths and more steps first.
 
+## Voice references: up to three per window
+
+A window can carry up to three standalone audio references (voice clips) for audio-capable models. They go to WanGP as `audio_guide`, `audio_guide2` and `audio_guide3` with `audio_prompt_type` `A`, `AB` or `ABD`. A fourth reference is refused before upload with "at most 3 standalone audio references". Attach them like any other reference, with `references assign` or **Window settings**. The worker reports `audio_references: 3` in `/health`. An older worker is refused with a restart message instead of silently dropping the third clip.
+
+## Kept soundtracks: a song or dialogue track under several windows
+
+An owned audio asset can be a window's kept soundtrack (WanGP `audio_prompt_type` `AS`). The model hears it and the render keeps it as the window's audio. When linked windows share one asset, the asset is sliced across them in order, so a 30 s song plays straight through three 10 s windows. No `<d>` dialogue lines are needed. If a window still has `<d>` lines, validation warns that the soundtrack replaces them.
+
+```bash
+# Keep Song.wav from 4 s onward under two linked windows. The second window continues where the first ends.
+node orch3stra.mjs soundtrack set --allow network --json '{
+  "projectId": "PROJECT_ID", "expectedRevision": 12,
+  "windowIds": ["WINDOW_A", "WINDOW_B"], "assetId": "SONG_ASSET_ID", "startSeconds": 4
+}'
+# Clear it.
+node orch3stra.mjs soundtrack set --allow network --json '{"projectId":"PROJECT_ID","expectedRevision":13,"windowIds":["WINDOW_A","WINDOW_B"],"assetId":null}'
+```
+
+The reply is the saved project plus the slices and any problems (two default 209-frame windows shown; durations are the kept, non-overlap part of each window):
+
+```json
+{"serverRevision": 13,
+ "soundtrack": [
+  {"windowId": "WINDOW_A", "title": "Verse 1", "slice": {"assetId": "SONG_ASSET_ID", "assetName": "Song.wav", "startSeconds": 4, "durationSeconds": 8.708333, "endSeconds": 12.708333, "assetDurationSeconds": 30, "continued": false}},
+  {"windowId": "WINDOW_B", "title": "Verse 2", "slice": {"assetId": "SONG_ASSET_ID", "assetName": "Song.wav", "startSeconds": 12.708333, "durationSeconds": 8.666667, "endSeconds": 21.375, "assetDurationSeconds": 30, "continued": true}}],
+ "issues": []}
+```
+
+`startSeconds` applies to the first window only. Later windows continue from the previous slice (`continued: true`). The same thing is the window field `soundtrack: {assetId, startSeconds?}` or `null` in timeline `upsert` and `insert`. Checks run before anything is uploaded. The asset must belong to this project, be audio, be allowed for generation and have a known duration. Every slice must end inside the asset ("exceeds Song.wav" otherwise). A run of linked windows must use one asset with no gap. The worker cuts each slice with ffmpeg and reports `soundtrack_slices: 1` in `/health`. Older bridges or workers refuse the window with a restart message.
+
+## Fish Drama 3 voices and multi-speaker dialogue
+
+The WanGP presets `fish_drama3` and `fish_drama3_int4` join `qwen3_tts_voicedesign` as reference-voice models. Discovery (`generation discover` with `family:"voice"`) reports the architecture in the profile:
+
+```json
+{"kind": "reference_voice", "architecture": "fish_drama3", "languages": ["auto"], "script": true,
+ "max_speakers": 16, "max_voice_references": 3, "max_seconds": 300, "paired_tags": ["whisper", "stress", "slow"]}
+```
+
+`buildVoices`/`prepareVoices` work with a Fish preset the same way they do with Qwen, with `"language":"auto"` (the only language the Fish profile reports). Each subject's voice design becomes the `[direction]` of a `Speaker 1:` sample line. `fish_drama3_int4` needs `ckpts/Fish_Drama3_experts_int4.safetensors`. If WanGP lacks it, use `fish_drama3`, which runs on the int8 backbone and codebooks plus the fp8 experts.
+
+**Dialogue** renders one WAV with several speakers from a script, then saves it as a project audio asset (not bound to a subject). Every nonempty line is `Speaker N: [direction] words`, where N is 1 to 16. Directions go in square brackets. The only inline tags are `<whisper>`, `<stress>` and `<slow>`, and each must be closed. Up to three owned audio assets give speakers 1 to 3 their voices (`audio_prompt_type` `A`, `AB`, `ABD`). Each needs its exact transcript, which defaults to the asset's transcript or the text it was generated from. Speakers without a reference get new voices. Duration is 1 to 300 s and defaults to 60.
+
+```bash
+# 1. Validate and return the exact worker request. Uploads, saves and submits nothing.
+node orch3stra.mjs voice dialogue --allow network --json '{
+  "projectId": "PROJECT_ID",
+  "script": "Speaker 1: [warm] Did you hear that?\nSpeaker 2: <whisper>Stay quiet.</whisper>",
+  "voiceAssetIds": ["ANN_VOICE_ASSET_ID"], "transcripts": ["Hello, this is my normal speaking voice."],
+  "seconds": 20, "seed": 7, "dryRun": true
+}'
+# 2. After explicit GPU approval: render once, wait, save as an asset.
+node orch3stra.mjs voice dialogue --allow network,cpu,gpu --json '{ ...same, without dryRun... }'
+```
+
+The worker task it builds (`dryRun` returns it as `workerRequest.body.tasks[0]`):
+
+```json
+{"mode": "reference_voice", "model_type": "fish_drama3",
+ "script": "Speaker 1: [warm] Did you hear that?\nSpeaker 2: <whisper>Stay quiet.</whisper>",
+ "voices": ["h3media:..."], "transcripts": ["Hello, this is my normal speaking voice."],
+ "duration_seconds": 20, "seed": 7}
+```
+
+A completed run returns `{"outcome":"completed","assetId":...,"asset":{"name":"Dialogue ...","type":"audio/wav","duration":...},"jobId":...,"speakers":[1,2],"audioPromptType":"A"}`. It also gives the `soundtrack set` command to keep the track under windows. The same composite is MCP tool `voice_dialogue`. The steps are `generation prepareDialogue`, one worker `/generate`, `job_wait`, then `references adoptVoice` with `bind:false`. A failure after dispatch never resubmits. It returns the job ID and the wait and adopt commands. A script error, a non-audio or foreign reference, or a missing transcript fails before upload. So does a worker without `voice_dialogue: 1` in `/health`, which returns `MODEL_UNSUPPORTED` with a restart hint.
+
 ## Upgrading safely
 
 Update the checkout while nothing is rendering: let renders and AI requests finish (or park them), pause managed dispatch, export project backups, then stop the editor. Changes to the Node editor only need the editor restarted (`node start-headless.mjs`). Changes to the Python worker need `node start-headless.mjs --stop` (it refuses while rendering) and then `node start-headless.mjs`; the footer and `--status` show the running worker version. With systemd user services, restart `h3-director.service` for editor changes and `h3-wangp.service` for worker changes, and regenerate the units with `node scripts/install-services.mjs --install` if paths changed. Never run two editors on the same data directory. See [UPGRADING.md](UPGRADING.md) for backups, rollback and footage recovery.

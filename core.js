@@ -153,6 +153,36 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
     p.subjects.filter(s=>w.subjectIds.includes(s.id)).forEach(s=>{const c=castFor(w,s.id);for(const id of c.sourceAssetIds??s.assetIds??[]){const a=p.assets.find(a=>a.id===id);if(!c.reviewed||(a?.kind==='audio'?c.voiceShots.length:c.visibleShots.length))out.add(id);}if(s.voiceAssetId&&speaksHere(w,s))out.add(s.voiceAssetId);});
     for(const id of w.excludedAssetIds||[])out.delete(id);
     for(const a of p.assets)if(!generationAllowed(a))out.delete(a.id);
+    if(w.soundtrack?.assetId)for(const a of p.assets)if(a.kind==='audio')out.delete(a.id); // 'AS' keeps one soundtrack; voice references do not apply.
+    return out;
+  }
+  const round6=x=>Math.round(x*1e6)/1e6;
+  /** Kept-soundtrack slices (WanGP 'AS'), one row per window or null. startSeconds is asset time at the window's first kept frame. When omitted it continues the previous window's slice of the same asset, otherwise it starts at 0. */
+  function soundtrackSlices(p) {
+    const rows=schedule(p);let prev=null;
+    return p.windows.map((w,i)=>{
+      const s=w.soundtrack;if(!s?.assetId){prev=null;return null;}
+      const continued=s.startSeconds==null&&prev?.assetId===s.assetId;
+      const startSeconds=round6(s.startSeconds!=null?Number(s.startSeconds):continued?prev.startSeconds+(rows[i].start-rows[i-1].start)/FPS:0);
+      const durationSeconds=round6(rows[i].kept/FPS),asset=p.assets.find(a=>a.id===s.assetId);
+      return prev={windowId:w.id,assetId:s.assetId,assetName:asset?.name||null,startSeconds,durationSeconds,endSeconds:round6(startSeconds+durationSeconds),assetDurationSeconds:Number.isFinite(Number(asset?.duration))?Number(asset.duration):null,continued};
+    });
+  }
+  /** Asset IDs a render must upload: references plus kept soundtracks. */
+  function mediaIds(p,windows=p.windows) { return new Set(windows.flatMap(w=>[...usedIds(p,w),...(w.soundtrack?.assetId&&generationAllowed(p.assets.find(a=>a.id===w.soundtrack.assetId))?[w.soundtrack.assetId]:[])])); }
+  function soundtrackProblems(p) {
+    const out=[],slices=soundtrackSlices(p),add=(message,windowId=null)=>out.push({message,windowId});
+    p.windows.forEach((w,i)=>{const s=slices[i];if(!s)return;const a=p.assets.find(a=>a.id===s.assetId),t=w.title;
+      if(!a)return add(`${t}: soundtrack asset ${s.assetId} is not in this project.`,w.id);
+      if(a.kind!=='audio')return add(`${t}: soundtrack ${a.name} is not an audio asset.`,w.id);
+      if(!generationAllowed(a))return add(`${t}: soundtrack ${a.name} is excluded from generation.`,w.id);
+      if(!Number.isFinite(s.startSeconds)||s.startSeconds<0)return add(`${t}: soundtrack start must be zero or later.`,w.id);
+      if(s.assetDurationSeconds==null)return add(`${t}: soundtrack ${a.name} has no known duration. Re-import it so its length is probed.`,w.id);
+      if(s.endSeconds>s.assetDurationSeconds+1e-3)add(`${t}: soundtrack slice ${s.startSeconds.toFixed(3)}-${s.endSeconds.toFixed(3)}s exceeds ${a.name} (${s.assetDurationSeconds.toFixed(3)}s).`,w.id);});
+    if(p.mode==='sliding'&&slices.some(Boolean)){
+      if(slices.some(x=>!x)||new Set(slices.map(x=>x.assetId)).size>1)add('Linked rendering sends one soundtrack for the whole timeline. Give every window the same soundtrack, or choose managed continuation or independent rendering.');
+      else if(slices.some((x,i)=>i&&Math.abs(x.startSeconds-slices[i-1].endSeconds)>1e-3))add('Linked rendering keeps one continuous soundtrack. Window slices must be contiguous; clear explicit startSeconds after the first window, or choose managed continuation or independent rendering.');
+    }
     return out;
   }
   function pool(p,w) {
@@ -304,6 +334,8 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
     const issues=[]; const add=(level,message,windowId=null)=>issues.push({level,message,windowId});
     if(audioScopeConflict(p))add('error','Native linked rendering applies audio references to every window. These windows need different audio scopes, including silent windows. Choose managed continuation or explicit independent rendering to preserve per-window voice references.');
     if(!p.windows.length) add('error','Add at least one window.');
+    for(const x of soundtrackProblems(p))add('error',x.message,x.windowId);
+    for(const w of p.windows.filter(w=>w.soundtrack?.assetId)){if(/<d>/.test(w.detail||''))add('warning',`${w.title}: kept-soundtrack windows do not take <d> lines. Describe who lip-syncs to the soundtrack instead.`,w.id);const dropped=new Set([...(w.assetIds||[]),...p.subjects.filter(s=>w.subjectIds.includes(s.id)&&s.voiceAssetId&&speaksHere(w,s)).map(s=>s.voiceAssetId)]);if(p.assets.some(a=>a.kind==='audio'&&a.id!==w.soundtrack.assetId&&dropped.has(a.id)))add('warning',`${w.title}: voice and audio references are ignored while a soundtrack is kept.`,w.id);}
     for(const w of p.windows)for(const a of generationConflicts(p,w))add('error',w.title+': '+a.name+' is excluded from generation but explicitly selected / pinned. Reactivate in Subjects & images or remove its source selection / pin.',w.id);
     const windowMin=slidingWindowMinimum(p);
     if(!Number.isFinite(Number(p.maxSpan))||Number(p.maxSpan)<windowMin)add('error',`This model requires a window ceiling of at least ${windowMin} frames. A generated span can still be 107 frames; increase the ceiling in Connections.`);
@@ -325,7 +357,7 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
         poolChecked.add(key); const counts={image:0,video:0,audio:0}; assets.forEach(a=>counts[a.kind]++);
         if(counts.image>9) add('error','WanGP supports at most 9 image references per task.',w.id);
         if(counts.video>2) add('error','This WanGP H3 path supports at most 2 video references per task.',w.id);
-        if(counts.audio>2) add('error','This WanGP H3 path supports at most 2 standalone audio references per task.',w.id);
+        if(counts.audio>3) add('error','This WanGP H3 path supports at most 3 standalone audio references per task.',w.id);
         if(assets.length>12) add('error','H3 accepts at most 12 reference files per task.',w.id);
         if(counts.audio>counts.image+counts.video) add('error','WanGP requires at least as many image/video references as audio references.',w.id);
         for(const a of assets) {
@@ -351,7 +383,7 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
       for(const subject of p.subjects.filter(s=>w.subjectIds.includes(s.id))){const c=castFor(w,subject.id);
         if(!c.reviewed){add('warning',`${w.title}: ${subject.name}'s visible/heard shots are unreviewed. Open Cast & speech; no Shot 1 appearance is assumed.`,w.id);continue;}
         if([...c.visibleShots,...c.voiceShots].some(n=>!shots.includes(n)))add('error',`${w.title}: ${subject.name} is assigned to a shot absent from the description.`,w.id);
-        if(c.voiceShots.length&&!subject.speakerId)add('error',`${w.title}: ${subject.name} is heard but has no speaker ID. Set it in Voice routing.`,w.id);
+        if(c.voiceShots.length&&!subject.speakerId&&!w.soundtrack?.assetId)add('error',`${w.title}: ${subject.name} is heard but has no speaker ID. Set it in Voice routing.`,w.id);
         if(c.delivery==='scene'&&c.voiceShots.some(n=>!c.visibleShots.includes(n)))add('warning',`${w.title}: ${subject.name} speaks while not visible. Choose an off-screen delivery route.`,w.id);
         if(!c.visibleShots.length&&new RegExp('<Subject '+subject.number+'>[^\\n]*appears in').test(w.retention))add('error',`${w.title}: manual retention additions still claim ${subject.name} is visible. Remove the conflicting addition.`,w.id);
         for(const match of w.detail.matchAll(/\[Shot (\d+)\]([\s\S]*?)(?=\[Shot \d+\]|$)/g))if(!c.voiceShots.includes(Number(match[1]))&&new RegExp('<Subject '+subject.number+'>\\s*(?:\\([^)]*\\)\\s*)?\\(S[1-9]\\d*\\)[^\\n]*?<d>').test(match[2]))add('error',`${w.title}: ${subject.name} has dialogue in Shot ${match[1]} but Heard is unchecked.`,w.id);
@@ -385,9 +417,13 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
   function mediaSettings(p,w,resolve=id=>id) {
     const assets=pool(p,w),images=assets.filter(a=>a.kind==='image'),videos=assets.filter(a=>a.kind==='video'),audios=assets.filter(a=>a.kind==='audio');
     return {image_prompt_type:'',image_start:null,image_end:null,video_source:null,
-      video_prompt_type:(images.length?'I':'')+(videos.length?(videos.length===2?'V+-U':'V-U'):''),audio_prompt_type:audios.length===2?'AB':audios.length?'A':'',
+      video_prompt_type:(images.length?'I':'')+(videos.length?(videos.length===2?'V+-U':'V-U'):''),audio_prompt_type:['','A','AB','ABD'][audios.length],
       image_refs:images.map(a=>resolve(a.id)),video_guide:videos[0]?resolve(videos[0].id):null,video_guide2:videos[1]?resolve(videos[1].id):null,
-      audio_guide:audios[0]?resolve(audios[0].id):null,audio_guide2:audios[1]?resolve(audios[1].id):null};
+      audio_guide:audios[0]?resolve(audios[0].id):null,audio_guide2:audios[1]?resolve(audios[1].id):null,audio_guide3:audios[2]?resolve(audios[2].id):null};
+  }
+  /** WanGP 'AS': the soundtrack file is the kept output audio. The worker cuts [start, start+duration) plus any source-video prefix. */
+  function soundtrackSettings(slice,durationSeconds,resolve) {
+    return {audio_prompt_type:'AS',audio_guide:resolve(slice.assetId),audio_guide2:null,audio_guide3:null,_director_soundtrack:{start_seconds:slice.startSeconds,duration_seconds:round6(durationSeconds)}};
   }
   function inferenceSettings(p) {
     if(p.inferenceMode!=='standard') return {num_inference_steps:8,sample_solver:'euler',guidance_phases:1,guidance_scale:1,flow_shift:12};
@@ -402,11 +438,13 @@ if (typeof window !== 'undefined' && !window.askConfirm) window.askConfirm = (su
     assertPromptReady(p); // Manifests and adapter submission must not bypass editor checks.
     if(!Number.isFinite(Number(p.maxSpan))||Number(p.maxSpan)<slidingWindowMinimum(p))throw Error(`This model requires a window ceiling of at least ${slidingWindowMinimum(p)} frames.`);
     const rows=schedule(p),common={...clone(p.settings||{}),...inferenceSettings(p),model_type:p.modelType,resolution:p.resolution,seed:Number(p.seed),image_mode:0,sliding_window_size:p.maxSpan,sliding_window_overlap:18,force_fps:'24',sliding_window_trim_first_frames:0,sliding_window_discard_last_frames:0,sliding_window_color_correction_strength:0,repeat_generation:1,prompt_enhancer:'',remove_background_images_ref:0,image_refs_relative_size:100};
-    delete common.frame_scheduler;delete common._api;delete common.model_def;delete common._director_continuation;
-    if(p.mode==='sliding') return [{...common,...mediaSettings(p,p.windows[0],resolve),multi_prompts_gen_type:'PW',video_length:rows.reduce((n,r)=>n+r.kept,0),prompt:compile(p),...(p.continuation?{_director_continuation:clone(p.continuation)}:{})}];
+    delete common.frame_scheduler;delete common._api;delete common.model_def;delete common._director_continuation;delete common._director_soundtrack;
+    const problems=soundtrackProblems(p);if(problems.length)throw Error(problems[0].message);
+    const slices=soundtrackSlices(p);
+    if(p.mode==='sliding') return [{...common,...mediaSettings(p,p.windows[0],resolve),...(slices[0]?soundtrackSettings(slices[0],rows.reduce((n,r)=>n+r.kept,0)/FPS,resolve):{}),multi_prompts_gen_type:'PW',video_length:rows.reduce((n,r)=>n+r.kept,0),prompt:compile(p),...(p.continuation?{_director_continuation:clone(p.continuation)}:{})}];
     // H3's installed validator requires a positive API overlap even for a fresh FG task.
     // With no source/start frame, its scheduler reuses zero frames; timeline overlap stays zero.
-    return p.windows.map((w,i)=>({...common,...mediaSettings(p,w,resolve),multi_prompts_gen_type:'FG',video_length:rows[i].kept,sliding_window_overlap:/h3_(?:ref2va|fl2va)(?:_|$)/i.test(String(p.modelType||''))?1:0,prompt:compileWindow(p,w,i,false)}));
+    return p.windows.map((w,i)=>({...common,...mediaSettings(p,w,resolve),...(slices[i]?soundtrackSettings(slices[i],slices[i].durationSeconds,resolve):{}),multi_prompts_gen_type:'FG',video_length:rows[i].kept,sliding_window_overlap:/h3_(?:ref2va|fl2va)(?:_|$)/i.test(String(p.modelType||''))?1:0,prompt:compileWindow(p,w,i,false)}));
   }
   function branch(p,startId,scope='single',source=null,seed=-1) {
     const i=p.windows.findIndex(w=>w.id===startId);if(i<0)throw Error('Select a window that still exists.');
@@ -720,5 +758,5 @@ When referenceManifests are provided, keep their closed source selections. Repor
     q.pacingPlan={title:proposal.title,rationale:proposal.rationale,requestedSeconds:proposal.beats.reduce((n,b)=>n+b.seconds,0),beats:clone(proposal.beats),sourceProjectId:p.id};
     return normalizeProject(q);
   }
-  return {WINDOW_TIMING_GUIDANCE,OWNER_LONG_WINDOW_BENCHMARK,normalizePlannerTiming,windowTiming,assertPlannerWindow,generationAllowed,assertGenerationInputs,generationConflicts,assertGenerationSelection,referenceUsageStamp,dialogueEntries,dialogueProblems,repairDialogue,LEGACY_DEFAULTS,EDITOR_HINTS,promptField,editableWindow,hasEditorDefault,promptReadiness,assertPromptReady,SCRIPTED_SOUNDS_ONLY,SOUNDSCAPE_SYSTEM,soundscapeContext,soundscapePacket,parseSoundscapeProposal,shotNumbers,castFor,normalizeCasting,audioBudget,setSpeakerAssignments,assignSpeaker,dialogueLines,STORY_SYSTEM,storyPacket,parseStoryProposal,storyScaffold,FPS,STEP,OFFSET,MIN,MAX_OVERLAP,SECTIONS,uid,clone,clamp,clean,flat,ceilGrid,nearestGrid,snapOverlap,geometry,schedule,time,seconds,newWindow,newProject,demo,usedIds,pool,refMap,compileSections,compileWindow,compile,validate,tasks,inferenceSettings,branch,renderPlan,renderSegment,scaffold,PLANNER_SYSTEM,plannerPacket,parseProposal,normalizeProject};
+  return {WINDOW_TIMING_GUIDANCE,OWNER_LONG_WINDOW_BENCHMARK,normalizePlannerTiming,windowTiming,assertPlannerWindow,generationAllowed,assertGenerationInputs,generationConflicts,assertGenerationSelection,referenceUsageStamp,dialogueEntries,dialogueProblems,repairDialogue,LEGACY_DEFAULTS,EDITOR_HINTS,promptField,editableWindow,hasEditorDefault,promptReadiness,assertPromptReady,SCRIPTED_SOUNDS_ONLY,SOUNDSCAPE_SYSTEM,soundscapeContext,soundscapePacket,parseSoundscapeProposal,shotNumbers,castFor,normalizeCasting,audioBudget,setSpeakerAssignments,assignSpeaker,dialogueLines,STORY_SYSTEM,storyPacket,parseStoryProposal,storyScaffold,FPS,STEP,OFFSET,MIN,MAX_OVERLAP,SECTIONS,uid,clone,clamp,clean,flat,ceilGrid,nearestGrid,snapOverlap,geometry,schedule,time,seconds,newWindow,newProject,demo,usedIds,soundtrackSlices,soundtrackProblems,soundtrackSettings,mediaIds,pool,refMap,compileSections,compileWindow,compile,validate,tasks,inferenceSettings,branch,renderPlan,renderSegment,scaffold,PLANNER_SYSTEM,plannerPacket,parseProposal,normalizeProject};
 });

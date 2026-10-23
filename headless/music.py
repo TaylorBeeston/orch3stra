@@ -53,5 +53,5 @@ class MusicSupport:
                 'top_k': 100, 'top_p': .95, 'model_mode': 0, 'custom_guide': None,
                 'custom_settings': {'save_score': 0}, 'repeat_generation': 1,
                 'video_length': 0, 'multi_prompts_gen_type': 'FG', 'prompt_enhancer': '',
-                'audio_prompt_type': '0', 'audio_guide': None, 'audio_guide2': None,
+                'audio_prompt_type': '0', 'audio_guide': None, 'audio_guide2': None, 'audio_guide3': None,
                 'video_source': None, 'image_refs': [], 'negative_prompt': ''}

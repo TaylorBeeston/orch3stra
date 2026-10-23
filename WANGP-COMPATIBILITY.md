@@ -12,7 +12,7 @@ null. This fails before model inference; it is unrelated to the number/quality o
 approved reference pictures and does not require another reference-fill pass.
 
 The current official settings reference documents image_mask/video_mask for masking,
-audio_guide/audio_guide2 for the two voice/reference inputs, and audio_scale as a
+audio_guide/audio_guide2/audio_guide3 for up to three voice/reference inputs ('A', 'AB', 'ABD'), and audio_scale as a
 numeric strength. `audio_scale` is not a filename replacement. The generic
 custom_settings advice is not a reason to put these empty attachment placeholders
 there or to change your working H3 custom options.

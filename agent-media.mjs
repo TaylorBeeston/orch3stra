@@ -7,12 +7,13 @@ import {createHash,randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {loadJSON,safeID} from './studio-server.mjs';
+import {dialogueRequest} from './dialogue-core.mjs';
 import {loadProject,saveProject,createProject,agentError,workerJSON,copyWorkerOutput} from './agent-project-state.mjs';
 const require=createRequire(import.meta.url),H=require('./core.js'),R=require('./reference-core.js'),Scenes=require('./scene-core.js'),A=require('./reference-agent-core.js'),Post=require('./post-core.js'),Selection=require('./render-selection-core.js');
 const exec=promisify(execFile),clone=H.clone,hash=v=>createHash('sha256').update(v).digest('hex');
 const fail=(message,code='INVALID_MEDIA')=>{throw agentError(code,message);};
 const readActions=new Set(['list','inspect','imagePlanPacket']);
-const FAMILY={Video:'video',Images:'image',Voices:'voice',Music:'music'};
+const FAMILY={Video:'video',Images:'image',Voices:'voice',Dialogue:'dialogue',Music:'music'};
 const routes={video:'',image:'image-',voice:'voice-',music:'music-'};
 const audioTypes={wav:'audio/wav',mp3:'audio/mpeg',flac:'audio/flac',ogg:'audio/ogg',aac:'audio/aac'};
 const imageTypes={png:'image/png',mjpeg:'image/jpeg',webp:'image/webp'};
@@ -130,6 +131,13 @@ export class MediaTools{
    if(!card)fail('Completed image output has no authoritative plan card.');
    R.applyGenerated(p,asset,card,args.attachWindows===true);
   }else if(args.action==='adoptVoice'){
+   if(snapshot.settings?.dialogue===true){
+    if(args.bind)fail('A dialogue track is not one subject voice. Adopt it with bind:false.');
+    Object.assign(asset,{name:'Dialogue '+(owned.output.name||''),role:'Spoken dialogue track for soundtrack or Post use.',description:'Fish Drama 3 dialogue, speakers '+(snapshot.settings.speakers||[]).join(', ')+'.'});
+    asset.provenance.intendedText=snapshot.settings.script||'';
+    addAsset(p,asset);
+    return{asset,jobId:args.jobId,outputId:args.outputId};
+   }
    const subject=p.subjects.find(s=>s.id===card?.subjectId);if(!subject)fail('Completed voice output has no current owned subject.');
    if(args.bind&&(measured.duration<2||measured.duration>15))fail('Binding needs an actual 2–15 second recording. Adopt without binding, then trim it in Voice workshop.');
    asset.role='Vocal timbre reference only. Do not copy source words.';
@@ -163,7 +171,7 @@ export class MediaTools{
  }
  async generation(args){
   if(args.action==='discover')return this.discover(args.family,args.modelType);
-  const match=/^(build|prepare)(Video|Images|Voices|Music)$/.exec(args.action);if(!match)throw agentError('UNKNOWN_ACTION','Unknown generation action.');
+  const match=/^(build|prepare)(Video|Images|Voices|Dialogue|Music)$/.exec(args.action);if(!match)throw agentError('UNKNOWN_ACTION','Unknown generation action.');
   const prepare=match[1]==='prepare',family=FAMILY[match[2]],record=await loadProject(this.studio,args,{write:prepare}),original=record.project;
   let p=original;
   if(family==='video'&&args.windowIds){
@@ -174,7 +182,7 @@ export class MediaTools{
   if(!safeID(args.requestId))fail('Choose and retain a stable request ID.');
   if(prepare&&original.agentGenerationRequests?.some(r=>r.requestId===args.requestId))throw agentError('REQUEST_ALREADY_PREPARED','This request ID already has durable preparation. Inspect the exact worker request or render intent; do not prepare or dispatch it again.',409,{request:original.agentGenerationRequests.find(r=>r.requestId===args.requestId)});
   const modelType=family==='video'?p.modelType:family==='image'?args.settings.modelType:args.modelType;
-  const [info,health,target]=await Promise.all([this.discover(family,modelType),workerJSON(this.backend,'/health'),this.backend.target()]);
+  const [info,health,target]=await Promise.all([this.discover(family==='dialogue'?'voice':family,modelType),workerJSON(this.backend,'/health'),this.backend.target()]);
   if(!health.instance)fail('Worker does not report a stable instance identifier.');
   if(info.metadata?.model_type!==modelType)fail('Discovered model identity does not match the selected preset.');
   let tasks=[],snapshot,plan,missing=[],intent=null;
@@ -183,7 +191,9 @@ export class MediaTools{
    if(profile?.inference_mode!==p.inferenceMode)fail('Saved inference mode differs from the actual discovered video profile. Configure the project explicitly.');
    const issues=H.validate(p,true).filter(i=>i.level==='error');if(issues.length)throw agentError('PROJECT_NOT_RENDERABLE','Resolve the saved project validation errors before preparation.',400,{issues});
    const settings=H.inferenceSettings(p);if(!profile.samplers?.includes(settings.sample_solver)||!Number.isInteger(settings.num_inference_steps)||settings.num_inference_steps<1||settings.num_inference_steps>200||!Number.isInteger(settings.guidance_phases)||settings.guidance_phases<1||settings.guidance_phases>profile.max_phases)fail('Saved inference settings do not match the discovered model profile.');
-   const used=[...new Set(p.windows.flatMap(w=>[...H.usedIds(p,w)]))];
+   const used=[...H.mediaIds(p)];
+   const caps=health.capabilities||{};if(p.windows.some(w=>w.soundtrack?.assetId)&&caps.soundtrack_slices!==1)fail('Kept soundtracks need a worker with the soundtrack_slices capability. Restart the WanGP worker on this orch3stra version.');
+   if(p.windows.some(w=>H.pool(p,w).filter(a=>a.kind==='audio').length>2)&&caps.audio_references!==3)fail('Three voice references need a worker with the audio_references=3 capability. Restart the WanGP worker on this orch3stra version.');
    if(p.mode==='managed'){
     if(health.capabilities?.bounded_continuation!==1)fail('Managed video requires the actual worker bounded-continuation capability.');
     if(prepare)for(const id of used)await this.verifiedBlob(id,assetOf(p,id));
@@ -213,6 +223,15 @@ export class MediaTools{
    const text=assertLiteral(args.text,'Audition text'),cards=args.subjectIds.map(id=>{const s=p.subjects.find(s=>s.id===id);if(!s||['place','prop'].includes(s.kind))fail('Voice design requires existing character subjects.');return{subjectId:id,name:s.name,description:assertLiteral(s.voiceDesign,'Saved subject voice description')};});
    const settings={modelType,text,language:args.language,seconds:args.seconds,seed:args.seed??-1};
    tasks=cards.map(c=>({mode:'reference_voice',model_type:modelType,prompt:text,alt_prompt:c.description,model_mode:args.language,duration_seconds:args.seconds,seed:args.seed??-1}));snapshot={kind:'reference-voices',cards,settings};
+  }else if(family==='dialogue'){
+   if(health.capabilities?.voice_dialogue!==1||info.profile?.kind!=='reference_voice'||info.profile.script!==true)fail('Dialogue scripts need a Fish Drama 3 voice model on a worker with the voice_dialogue capability. Restart the WanGP worker on this orch3stra version.');
+   const options={project:p,modelType,script:args.script,voiceAssetIds:args.voiceAssetIds||[],transcripts:args.transcripts,seconds:args.seconds??60,seed:args.seed??-1};
+   // Validate with placeholder handles first so a bad script or asset fails before any upload.
+   const build=uploaded=>{try{return dialogueRequest({...options,uploaded});}catch(e){if(e.code==='INVALID_DIALOGUE')fail(e.message);throw e;}};
+   snapshot=build(Object.fromEntries(options.voiceAssetIds.map(id=>[id,'h3media:'+'0'.repeat(32)]))).snapshot;
+   if(options.voiceAssetIds.length>info.profile.max_voice_references)fail('This voice model accepts '+info.profile.max_voice_references+' voice references.');
+   const uploaded=await this.uploaded(p,options.voiceAssetIds,{prepare,health,target});missing=uploaded.missing;
+   if(!missing.length)tasks=[build(uploaded.mapping).task];
   }else{
    if(!health.capabilities?.music||info.profile?.kind!=='music')fail('Configured worker does not support native music.');
    if(/\binstrumental(?:[ -]only)?\b|\bno vocals\b|\bwithout vocals\b/i.test(args.style))fail('This native route generates vocal songs with original lyrics, not verified instrumental-only music.');

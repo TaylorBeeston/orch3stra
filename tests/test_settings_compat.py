@@ -51,6 +51,18 @@ class SettingsCompatibilityTests(unittest.TestCase):
         self.assertIsNone(resolved['video_mask'])
         self.assertIsNone(resolved['audio_source'])
 
+    def test_three_voice_references_resolve_audio_guide3(self):
+        ids, paths = zip(*[self.upload('speaker-%d.wav' % n, 'audio/wav', b'voice-%d' % n) for n in (1, 2, 3)])
+        i, _ = self.upload('portrait.png', 'image/png', b'portrait')
+        resolved = self.e.resolve_task(dict(task(), audio_guide=ids[0], audio_guide2=ids[1], audio_guide3=ids[2],
+                                            audio_prompt_type='ABD', image_refs=[i], video_prompt_type='I'))
+        self.assertEqual([resolved['audio_guide'], resolved['audio_guide2'], resolved['audio_guide3']], list(paths))
+        self.assertEqual(resolved['audio_prompt_type'], 'ABD')
+
+    def test_unowned_audio_guide3_path_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Missing or changed upload'):
+            self.e.resolve_task(dict(task(), audio_guide3='/etc/passwd', audio_prompt_type='ABD'))
+
     def test_real_voice_bindings_are_preserved_not_renamed_to_audio_scale(self):
         a, pa = self.upload('speaker-one.wav', 'audio/wav', b'voice-one')
         b, pb = self.upload('speaker-two.wav', 'audio/wav', b'voice-two')

@@ -181,6 +181,22 @@ try {
   analyses.delete(repairAnalysisId);
   await assert.rejects(edit('timeline','take',{windowId:first,jobId:repairId,dependencyReview:true}),/origin is unavailable/);
   await assert.rejects(edit('timeline','adoptJob',{kind:'native',jobId:repairId}),/origin is unavailable/);
+  // Kept soundtrack: owned audio only, one contiguous slice per linked window.
+  r=await call('project',{action:'create',name:'Song',request:'A music video.'});
+  r.project.assets.push({id:'song',kind:'audio',number:1,name:'Song.wav',type:'audio/wav',sha256:'e'.repeat(64),size:128,duration:30},{id:'still',kind:'image',number:1,name:'Still.png',type:'image/png',sha256:'f'.repeat(64),size:128});
+  r.project.windows.push({...H.newWindow('Verse',209,18)});r=await studio.putProject(r.project,r.serverRevision);
+  const [verse1,verse2]=r.project.windows.map(w=>w.id);
+  await assert.rejects(edit('timeline','soundtrack',{windowIds:[verse1],assetId:'still'}),/not audio/);
+  await assert.rejects(edit('timeline','soundtrack',{windowIds:[verse1],assetId:'missing'}),/Unknown soundtrack asset/);
+  assert.throws(()=>edit('timeline','upsert',{windowId:verse1,window:{soundtrack:{assetId:'song',startSeconds:-1}}}),/numeric bounds/);
+  await assert.rejects(tools.handle('timeline',{action:'upsert',projectId:r.id,expectedRevision:r.serverRevision,windowId:verse1,window:{soundtrack:{assetId:'song',startSeconds:-1}}}),/zero or later/);
+  const set=await edit('timeline','soundtrack',{windowIds:[verse1,verse2],assetId:'song',startSeconds:4});
+  const rows=H.schedule(set.project),r6=x=>Math.round(x*1e6)/1e6;
+  assert.deepEqual(set.soundtrack.map(x=>[x.slice.startSeconds,x.slice.durationSeconds]),[[4,r6(rows[0].kept/24)],[r6(4+rows[1].start/24-rows[0].start/24),r6(rows[1].kept/24)]]);
+  assert.deepEqual(set.project.windows.map(w=>w.soundtrack),[{assetId:'song',startSeconds:4},{assetId:'song'}]);assert.deepEqual(set.issues,[]);
+  await edit('timeline','upsert',{windowId:verse2,window:{soundtrack:{assetId:'song',startSeconds:29}}});
+  assert(H.soundtrackProblems(r.project).some(x=>/exceeds Song.wav/.test(x.message)));
+  const cleared=await edit('timeline','soundtrack',{windowIds:[verse1,verse2],assetId:null});assert.deepEqual(cleared.project.windows.map(w=>w.soundtrack),[null,null]);
   console.log('Agent project authoring/CAS/ownership/Post regression checks passed (isolated service fixtures; no inference).');
 } finally {
   await new Promise(resolve=>worker.close(resolve));

@@ -10,6 +10,8 @@
   }
   function mediaKeys(p){return [...new Set([...p.assets.map(a=>a.id),...(p.postMedia||[]).map(a=>a.id),...(p.soundLibraries||[]).map(l=>l.source?.id).filter(Boolean),...(p.voiceWorkshops||[]).map(w=>w.blobKey),...p.assets.map(a=>'thumb:'+a.id),...Object.values(p.renderThumbnails||{})])];}
   function managedPlan(p){return H3.schedule(p).map((g,i)=>({id:p.windows[i].id,title:p.windows[i].title,task_index:i+1,window_index:1,start_frame:g.start,end_frame:g.end,frames:g.kept,overlap:g.overlap,span:g.span}));}
+  // A single-window clone loses the previous window, so pin the resolved soundtrack offset.
+  function pinSoundtrack(p,q,index){const slice=H3.soundtrackSlices(p)[index];if(slice)q.windows[0].soundtrack={assetId:slice.assetId,startSeconds:slice.startSeconds};}
   function managedWindow(p,index,source=null,observedRow=null){
     if(p.mode!=='managed')throw Error('Choose Director-managed continuation first.');
     if(!Number.isInteger(index)||!p.windows[index])throw Error('Invalid sequence window.');
@@ -17,7 +19,7 @@
     const g=observedRow?{...planned,start:observedRow.start_frame,end:observedRow.end_frame,kept:observedRow.frames,overlap:observedRow.overlap}:planned;
     if(observedRow&&(!Number.isSafeInteger(g.start)||g.start<0||g.kept!==planned.kept||g.overlap!==planned.overlap))throw Error('Only the measured prefix boundary may differ for an unrendered window.');
     if(g.start>0&&(!source||source.keepFrames!==g.start))throw Error('A verified preceding prefix is required at this exact boundary.');
-    const q=H3.clone(p);q.mode='sliding';q.windows=[{...q.windows[index],frames:g.kept,overlap:g.overlap}];q.jobs=[];q.variants=[];q.voiceWorkshops=[];delete q.continuation;
+    const q=H3.clone(p);q.mode='sliding';q.windows=[{...q.windows[index],frames:g.kept,overlap:g.overlap}];pinSoundtrack(p,q,index);q.jobs=[];q.variants=[];q.voiceWorkshops=[];delete q.continuation;
     if(source)q.continuation=H3.clone(source);
     const problems=H3.validate(q,true).filter(x=>x.level==='error');if(problems.length)throw Error(problems[0].message);
     const actual=H3.schedule(q)[0];if(actual.kept!==g.kept||actual.overlap!==g.overlap)throw Error('Single-window geometry differs from the submitted plan.');
@@ -28,7 +30,7 @@
     const planned=H3.schedule(p)[index],row=observedRow||{start_frame:planned.start,frames:planned.kept,overlap:planned.overlap};
     if(!Number.isSafeInteger(row.start_frame)||row.start_frame<0||row.frames!==planned.kept||row.overlap!==planned.overlap)throw Error('Invalid bounded managed geometry.');
     if(row.overlap&&(!source||!Number.isSafeInteger(source.keepFrames)||source.keepFrames<row.overlap))throw Error('A verified preceding tail is required.');
-    const q=H3.clone(p);q.mode='sliding';q.windows=[{...q.windows[index],frames:row.frames,overlap:row.overlap}];q.jobs=[];q.variants=[];q.voiceWorkshops=[];delete q.continuation;
+    const q=H3.clone(p);q.mode='sliding';q.windows=[{...q.windows[index],frames:row.frames,overlap:row.overlap}];pinSoundtrack(p,q,index);q.jobs=[];q.variants=[];q.voiceWorkshops=[];delete q.continuation;
     // The local plan contains overlap + new footage. The task keeps the original
     // source boundary separately so the worker can extract an old saved tail.
     if(row.overlap)q.continuation={...H3.clone(source),keepFrames:row.overlap};
