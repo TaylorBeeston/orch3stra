@@ -221,7 +221,7 @@ The WanGP presets `fish_drama3` and `fish_drama3_int4` join `qwen3_tts_voicedesi
  "max_speakers": 16, "max_voice_references": 3, "max_seconds": 300, "paired_tags": ["whisper", "stress", "slow"]}
 ```
 
-`buildVoices`/`prepareVoices` work with a Fish preset the same way they do with Qwen. Each subject's voice design becomes the `[direction]` of a `Speaker 1:` sample line. `fish_drama3_int4` needs `ckpts/Fish_Drama3_experts_int4.safetensors`. If WanGP lacks it, use `fish_drama3`, which runs on the int8 backbone and codebooks plus the fp8 experts.
+`buildVoices`/`prepareVoices` work with a Fish preset the same way they do with Qwen, with `"language":"auto"` (the only language the Fish profile reports). Each subject's voice design becomes the `[direction]` of a `Speaker 1:` sample line. `fish_drama3_int4` needs `ckpts/Fish_Drama3_experts_int4.safetensors`. If WanGP lacks it, use `fish_drama3`, which runs on the int8 backbone and codebooks plus the fp8 experts.
 
 **Dialogue** renders one WAV with several speakers from a script, then saves it as a project audio asset (not bound to a subject). Every nonempty line is `Speaker N: [direction] words`, where N is 1 to 16. Directions go in square brackets. The only inline tags are `<whisper>`, `<stress>` and `<slow>`, and each must be closed. Up to three owned audio assets give speakers 1 to 3 their voices (`audio_prompt_type` `A`, `AB`, `ABD`). Each needs its exact transcript, which defaults to the asset's transcript or the text it was generated from. Speakers without a reference get new voices. Duration is 1 to 300 s and defaults to 60.
 
